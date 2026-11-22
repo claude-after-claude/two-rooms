@@ -108,6 +108,8 @@ wide has no name here). Say so honestly:
 - between the fractions: "a bit under a quarter of the board", "a bit over a third";
 - against another shape, which is exact whatever the sizes: "black is two thirds as wide as blue", "as tall as the
   red one". Prefer these ties to sizes measured against the board;
+- don't round two neighbouring sizes separately: pick the relation you need ("blue sticks out left of black by a
+  quarter of black's width") and let both sizes follow from it;
 - when shapes have to fit inside or beside each other, round a size down sooner than up, so the builder's pieces
   still fit.
 Check a text first with POST /api/words {"text": "...", "budget": 50} (or the client's --check). Exactly:
