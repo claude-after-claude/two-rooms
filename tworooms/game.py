@@ -52,6 +52,22 @@ def reading_word(v) -> str:
     return "nearly exact" if v >= 70 else "close" if v >= 50 else "recognisable" if v >= 30 else "elsewhere"
 
 
+def slide_words(dx: int, dy: int) -> str:
+    """Which way a board would fit best, without saying how far: 'mostly left, and a little up'."""
+    if not dx and not dy:
+        return "it already sits where it fits best"
+    h = ("right" if dx > 0 else "left") if dx else None
+    v = ("up" if dy > 0 else "down") if dy else None
+    if not v:
+        return f"it would fit best moved {h}"
+    if not h:
+        return f"it would fit best moved {v}"
+    big, small = (h, v) if abs(dx) >= abs(dy) else (v, h)
+    if max(abs(dx), abs(dy)) >= 2 * min(abs(dx), abs(dy)):
+        return f"it would fit best moved mostly {big}, and a little {small}"
+    return f"it would fit best moved {h} and {v}"
+
+
 def said(v) -> str:
     """'close · 54%'"""
     return "?" if v is None else f"{reading_word(v)} · {round(v)}%"
@@ -258,7 +274,8 @@ class Hall:
                                          "url": f"/letter/{lid}"}, public=True)
         return self.letter_view(me, lid)
 
-    def close_letter(self, me, lid) -> dict:
+    def close_letter(self, me, lid, reason: str | None = None) -> dict:
+        """The describer closes their letter; the admin may close any, saying why (shown on the letter's page)."""
         row = self.letter(lid)
         if not self.is_admin(me) and row["describer_id"] != me["id"]:
             raise GameError(403, "Only the letter's describer can close it.")
@@ -269,8 +286,12 @@ class Hall:
                     "next": "The draft is discarded. POST /api/letters {level} for a new picture."}
         if row["status"] != "open":
             raise GameError(409, f"This letter is already {row['status']}.")
+        if self.is_admin(me):
+            reason = (reason or "").strip() or "closed by the hall's keeper"
+        else:
+            reason = "closed by its describer"
         with D.tx(self.db):
-            self._close(lid, "closed by its describer")
+            self._close(lid, reason)
         return self.letter_view(me, lid)
 
     def _close(self, lid, reason):
@@ -404,6 +425,7 @@ class Hall:
     def _checks(self, b) -> list[dict]:
         return [{"check": c["n"], "in_place": c["in_place"], "slid_to_fit": c["slid"], "at": iso(c["created"]),
                  "in_place_word": reading_word(c["in_place"]), "slid_to_fit_word": reading_word(c["slid"]),
+                 "direction": slide_words(c["slide_dx"], c["slide_dy"]),
                  "board_url": f"/api/builds/{b['id']}/checks/{c['n']}.png"}
                 for c in self.all("SELECT * FROM checks WHERE build_id=? ORDER BY n", b["id"])]
 
@@ -711,8 +733,10 @@ class Hall:
             "build": b["id"], "check": done + 1, "checks_left": left,
             "in_place": res["in_place"], "slid_to_fit": res["slid_to_fit"], "readings_explained": READINGS_EXPLAINED,
             "in_place_word": reading_word(res["in_place"]), "slid_to_fit_word": reading_word(res["slid_to_fit"]),
+            "direction": slide_words(round(res["slide"]["right"] * 8), round(res["slide"]["up"] * 8)),
             "board_url": f"/api/builds/{b['id']}/checks/{done + 1}.png", "waiting_on": me["callsign"],
-            "next": (f"Check {done + 1}: {said(res['in_place'])} in place, {said(res['slid_to_fit'])} slid to fit. "
+            "next": (f"Check {done + 1}: {said(res['in_place'])} in place, {said(res['slid_to_fit'])} slid to fit; "
+                     f"{slide_words(round(res['slide']['right'] * 8), round(res['slide']['up'] * 8))}. "
                      + ("A high slid-to-fit with a low in-place means the right things in the wrong place. "
                         if res["slid_to_fit"] - res["in_place"] >= 20 else "")
                      + (f"{plural(left, 'check')} left. " if left else "No checks left. ")
@@ -1113,6 +1137,10 @@ class Hall:
             "open_letters_you_may_build": len(letters), "by_level": by_level, "letters": letters[:20],
             "open_seats": seats, "recent": self.recent(10),
         }
+        if me not in (None, "admin"):
+            out["your_waiting_matches"] = [
+                {"match": r["id"], "open": bool(r["open"]), "url": f"/m/{r['id']}"}
+                for r in self.all("SELECT * FROM matches WHERE creator_id=? AND status='waiting' ORDER BY created", me["id"])]
         if me in (None, "admin"):
             out["next"] = "Make a callsign: POST /api/players {\"callsign\": \"...\"}. The manual is at /llms.txt."
         else:
@@ -1121,9 +1149,12 @@ class Hall:
                 opts.append(f"build one of {plural(len(letters), 'open letter')} (POST /api/letters/<id>/builds)")
             if seats:
                 opts.append(f"sit at an open live match, {len(seats)} waiting (POST /api/seat)")
-            else:
+            elif not out["your_waiting_matches"]:
                 opts.append("start a live match (POST /api/seat, or POST /api/matches {\"open\": false} to invite someone)")
             out["next"] = "You can " + "; ".join(opts) + "."
+            for w in out["your_waiting_matches"]:
+                out["next"] += (f" Your own {'seat' if w['open'] else 'invitation'} {w['match']} is waiting for someone: "
+                                f"GET /api/matches/{w['match']}?wait=60 waits for them.")
         return out
 
     def recent(self, limit=12, level=None, mode=None, before: float | None = None) -> list[dict]:

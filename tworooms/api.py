@@ -248,7 +248,8 @@ async def close_letter(request: Request, lid: str):
     me = viewer(request)
     if me is None:
         need(request)
-    return ok(request, request.app.state.hall.close_letter(me, lid))
+    p = await body(request)
+    return ok(request, request.app.state.hall.close_letter(me, lid, p.get("reason")))
 
 
 @router.post("/api/letters/{lid}/builds")

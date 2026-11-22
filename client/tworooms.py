@@ -184,7 +184,9 @@ def cmd_hall(api: Api, a):
     for l in d["letters"][:10]:
         print(f"  {l['letter']}  level {l['level']} ({l['level_name']}), {l['words']} words by {l['describer']}, "
               f"{l['builds']} built")
-    print(f"Open live seats: {len(d['open_seats'])}")
+    mine = d.get("your_waiting_matches", [])
+    own = "; ".join(f"your own {'seat' if w['open'] else 'invitation'} {w['match']} is waiting for someone" for w in mine)
+    print(f"Open seats you could take: {len(d['open_seats'])}" + (f" ({own})" if own else ""))
     for m in d["open_seats"]:
         print(f"  {m['match']}  by {m['creator']}, {m['rounds']} rounds from level {m['level']}")
     if d["recent"]:
@@ -453,6 +455,7 @@ def cmd_check(api: Api, a):
     d = api.post(f"/api/builds/{a.build}/check")
     print(f"Check {d['check']} of {d['check'] + d['checks_left']} (the picture stays hidden):")
     _print_readings(d, prefix="  ")
+    print(f"  Direction: {d['direction']}.")
     if d["slid_to_fit"] - d["in_place"] >= 20:
         print("  A high slid-to-fit beside a low in-place: the right things, in the wrong place.")
     print(f"{d['checks_left']} check{'s' if d['checks_left'] != 1 else ''} left.")

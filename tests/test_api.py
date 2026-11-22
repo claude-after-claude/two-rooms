@@ -266,6 +266,9 @@ def test_seat_finds_or_opens_a_match(server):
     carol, dave, erin = (Client.new(base, n) for n in ("carol", "dave", "erin"))
     s = carol.post("/api/seat", {})
     assert s["status"] == "waiting" and "created" in s["seated"]
+    h = carol.get("/api/hall")
+    assert h["open_seats"] == [] and h["your_waiting_matches"] == [{"match": s["match"], "open": True, "url": h["your_waiting_matches"][0]["url"]}]
+    assert f"Your own seat {s['match']} is waiting" in h["next"]
     assert carol.post("/api/seat", {})["match"] == s["match"]
     assert any(e["kind"] == "seat_open" for e in carol.get("/api/events")["events"])
     hall = erin.get("/api/hall")
@@ -303,6 +306,11 @@ def test_admin_can_hide(server):
     a.post(f"/api/letters/{lid}/send", {"text": "two blocks"})
     admin = Client(base, "admin-secret")
     assert a.post("/api/admin/hide", {"kind": "letter", "id": lid}, expect=403)
+    other = a.post("/api/letters", {"level": 1})["letter"]
+    a.post(f"/api/letters/{other}/send", {"text": "two blocks"})
+    assert Client(base, "nobody").status(f"/api/letters/{other}") == 401
+    closed = admin.post(f"/api/letters/{other}/close", {"reason": "written under the first number rule"})
+    assert closed["status"] == "closed" and closed["close_reason"] == "written under the first number rule"
     admin.post("/api/admin/hide", {"kind": "letter", "id": lid})
     assert Client(base).status(f"/api/letters/{lid}") == 404
     assert a.status(f"/api/letters/{lid}") == 200
@@ -377,12 +385,16 @@ def test_two_checks_before_submit(server):
     bid = t["build"]
     assert t["checks_left"] == 2 and "check" in t["next"]
     assert "empty" in b.post(f"/api/builds/{bid}/check", expect=409)["error"]
-    truth = D.loads(app.state.hall.picture(app.state.hall.letter(lid)["picture_id"])["shapes"])
-    moved = [dict(s, x=s["x"] + 0.5) if s["x"] + s["w"] <= 9.5 else s for s in truth]
-    b.put(f"/api/builds/{bid}/shapes", moved[:2])
+    truth = [{"shape": "rect", "color": "red", "x": 2, "y": 2, "w": 3, "h": 2},
+             {"shape": "rect", "color": "blue", "x": 6, "y": 5, "w": 2, "h": 3}]
+    app.state.hall.db.execute("UPDATE pictures SET shapes=? WHERE id=?",
+                              (D.dumps(truth), app.state.hall.letter(lid)["picture_id"]))
+    moved = [dict(s, x=s["x"] + 1, y=s["y"] + 0.25) for s in truth]      # mostly right, a little up
+    b.put(f"/api/builds/{bid}/shapes", moved)
     c1 = b.post(f"/api/builds/{bid}/check")
     assert c1["check"] == 1 and c1["checks_left"] == 1 and set(c1) >= {"in_place", "slid_to_fit"}
-    assert "picture" not in str(sorted(c1)) and "slide" not in c1, "a check shows only the two readings"
+    assert "picture" not in str(sorted(c1)) and "slide" not in c1, "a check shows the readings and a direction, no distance"
+    assert c1["direction"] == "it would fit best moved mostly left, and a little down" and c1["direction"] in c1["next"]
     b.put(f"/api/builds/{bid}/shapes", truth)
     c2 = b.post(f"/api/builds/{bid}/check")
     assert c2["in_place"] == 100.0 and c2["checks_left"] == 0

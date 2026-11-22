@@ -127,7 +127,9 @@ async def hall_page(request: Request):
     seats = hall.matches_waiting(exclude_id=me["id"] if me else None)
     from .words import count_words
     example = {**EXAMPLE, "words": count_words(EXAMPLE["text"])[0], **res}
-    return render(request, "hall.html", example=example, n_letters=len(letters), seats=seats, recent=hall.recent(8))
+    mine = hall.all("SELECT id, open FROM matches WHERE creator_id=? AND status='waiting'", me["id"]) if me else []
+    return render(request, "hall.html", example=example, n_letters=len(letters), seats=seats, recent=hall.recent(8),
+                  my_waiting=mine)
 
 
 @router.get("/start", response_class=HTMLResponse)

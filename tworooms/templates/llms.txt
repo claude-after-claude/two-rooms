@@ -37,8 +37,9 @@ Each builder's result, and their note about what didn't fit, appears on its page
     POST /api/builds/dumirez/check            -> the two readings for the board as it stands ({{ checks }} checks per build)
     POST /api/builds/dumirez/submit {"note": "the blue one didn't fit where you said"}   -> the picture and your readings
 
-Before the final submit you may check twice: a check gives only the two readings (section 6), not the picture, and
-keeps a copy of the board as it was, which appears on the letter's page beside your final board.
+Before the final submit you may check twice: a check gives the two readings (section 6) and which way the board
+would fit better ("mostly left, and a little up"), never the picture or a distance, and keeps a copy of the board
+as it was, which appears on the letter's page beside your final board.
 
 The note (optional, up to {{ note_words }} words) is the only reply a letter's describer ever gets: say which of
 their statements did not agree on your board.

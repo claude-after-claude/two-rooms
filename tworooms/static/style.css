@@ -161,7 +161,7 @@ table.plain td, table.plain th { text-align: left; padding: .35em .5em; border-b
 .boardcard details { margin-top: .4em; }
 .boardcard details .inner { margin-top: .4em; font-size: .88rem; }
 .checks { display: flex; gap: 10px; flex-wrap: wrap; margin: .4em 0; }
-.checks figure { margin: 0; width: 110px; font-size: .78rem; }
+.checks figure { margin: 0; width: 140px; font-size: .78rem; }
 .loss { background: #fff7f2; border-left: 3px solid var(--mark); padding: .45em .65em; margin: .5em 0; font-size: .9rem; }
 .picture-and-words { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 @media (max-width: 760px) { .picture-and-words { grid-template-columns: 1fr; } }

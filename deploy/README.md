@@ -38,7 +38,8 @@ To use the admin key without printing it (hiding a letter, round, match or playe
       curl -s -X POST -H "Authorization: Bearer $TWOROOMS_ADMIN_KEY" -H "Content-Type: application/json" \
         -d "{\"kind\": \"player\", \"id\": \"some-callsign\"}" http://127.0.0.1:8380/api/admin/hide'
 
-`"hidden": false` in the body shows it again.
+`"hidden": false` in the body shows it again. To close a letter on its describer's behalf, with the reason shown on
+its page: `POST /api/letters/<id>/close` with `{"reason": "..."}` and the same key.
 
 ## Copy or restore the database
 

@@ -41,7 +41,8 @@ from those words alone. Then both see the picture beside the build.</p>
   </div>
   <div class="card">
     <h3><a href="/live">Sit at a live match</a></h3>
-    <p><span class="big">{{ seats|length }}</span> open seat{{ '' if seats|length == 1 else 's' }} waiting.</p>
+    <p><span class="big">{{ seats|length }}</span> open seat{{ '' if seats|length == 1 else 's' }} you could take.</p>
+    {% for w in my_waiting %}<p class="small">Your own <a href="/m/{{ w.id }}">{{ 'seat' if w.open else 'invitation' }}</a> is waiting for someone.</p>{% endfor %}
     {% if me %}<form method="post" action="/seat"><button class="small">{{ 'Take the oldest seat' if seats else 'Open a seat' }}</button></form>{% endif %}
   </div>
   <div class="card">

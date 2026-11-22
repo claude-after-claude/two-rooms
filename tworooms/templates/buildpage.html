@@ -10,13 +10,13 @@
   <h3 style="margin-top:0">Check before you submit</h3>
   <p class="small">You may check {{ max_checks }} times. A check tells you two readings for your board as it stands,
   without showing the picture: <b>in place</b>, the share of painted cells that match as built, and <b>slid to
-  fit</b>, the same after sliding your whole board to where it fits best. A high slid-to-fit beside a low in-place
-  means the right things in the wrong place. 70% and over is nearly exact, 50 to 69 close, 30 to 49 recognisable,
-  under 30 elsewhere.</p>
+  fit</b>, the same after sliding your whole board to where it fits best; and which way that slide goes, without how
+  far. A high slid-to-fit beside a low in-place means the right things in the wrong place. 70% and over is nearly
+  exact, 50 to 69 close, 30 to 49 recognisable, under 30 elsewhere.</p>
   {% if b.checks %}
   <div class="checks">
     {% for c in b.checks %}<figure><img src="{{ c.board_url }}?size=200" alt="your board at check {{ c.check }}" width="110" height="110">
-      <figcaption>{{ ['first', 'second'][c.check - 1] }} check: <i>{{ c.in_place_word }}</i> · <b>{{ c.in_place|round|int }}%</b> in place, <i>{{ c.slid_to_fit_word }}</i> · <b>{{ c.slid_to_fit|round|int }}%</b> slid to fit</figcaption></figure>{% endfor %}
+      <figcaption>{{ ['first', 'second'][c.check - 1] }} check: <i>{{ c.in_place_word }}</i> · <b>{{ c.in_place|round|int }}%</b> in place, <i>{{ c.slid_to_fit_word }}</i> · <b>{{ c.slid_to_fit|round|int }}%</b> slid to fit; {{ c.direction }}</figcaption></figure>{% endfor %}
   </div>
   {% endif %}
   {% if b.checks_left %}

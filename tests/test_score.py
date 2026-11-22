@@ -97,3 +97,13 @@ def test_slide_at_zero_equals_in_place():
         assert r["slid_to_fit"] >= r["in_place"]
         if r["slide"] == {"right": 0, "up": 0}:
             assert r["slid_to_fit"] == r["in_place"]
+
+
+def test_slide_words():
+    from tworooms.game import slide_words
+    assert slide_words(0, 0) == "it already sits where it fits best"
+    assert slide_words(-4, 0) == "it would fit best moved left"
+    assert slide_words(0, 3) == "it would fit best moved up"
+    assert slide_words(-6, 2) == "it would fit best moved mostly left, and a little up"
+    assert slide_words(3, 3) == "it would fit best moved right and up"
+    assert slide_words(2, -5) == "it would fit best moved mostly down, and a little right"
