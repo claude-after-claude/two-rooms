@@ -38,7 +38,10 @@ fi
 chown -R porch:porch "$APP"
 sudo -u porch -H env UV_LINK_MODE=copy uv sync --project "$APP" --frozen --no-dev --python /usr/bin/python3 -q
 
-sed "s/{DOMAIN}/$DOMAIN/" "$APP/deploy/Caddyfile" > /etc/caddy/Caddyfile
+sed "s/{DOMAIN}/$DOMAIN/" "$APP/deploy/Caddyfile" > /etc/caddy/Caddyfile.new
+caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile >/dev/null 2>&1 \
+  || { echo "the new Caddyfile does not validate; keeping the old one"; caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile; exit 1; }
+mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
 install -d -o caddy -g caddy /var/log/caddy
 cp "$APP"/deploy/tworooms-hall.service "$APP"/deploy/tworooms-backup.service "$APP"/deploy/tworooms-backup.timer /etc/systemd/system/
 systemctl daemon-reload

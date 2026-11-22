@@ -11,6 +11,10 @@
 
 {DOMAIN} {
 	encode gzip
+	# Caddy 2.6 answers 502 when request_body's limit trips inside the proxy; say 413 up front instead.
+	@toobig header_regexp Content-Length ^([0-9]{6,}|[7-9][0-9]{4}|6[6-9][0-9]{3}|65[6-9][0-9]{2}|655[4-9][0-9]|6553[6-9])$
+	header @toobig Content-Type application/json
+	respond @toobig `{"error": "The request is larger than 64 KB. A message is at most 2,000 characters."}` 413
 	request_body {
 		max_size 64KB
 	}

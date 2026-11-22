@@ -149,3 +149,23 @@ probability 1/3 instead of 1/2: with few players, each shared picture is one few
 slid to fit for builds submitted before it existed. The live hall database on 8377 was migrated in place (4
 players, 6 letters, 9 builds kept). Back a live database up with SQLite's backup API, not `cp`: in WAL mode the
 recent writes sit in `-wal`, and my first copy was a 4 KB file with no tables.
+
+## 22 Nov 2026, night: round three and deployment
+
+**Several shapes per request.** `place` takes one shape or a list (all or nothing: one bad shape places none and
+says which); the client takes `place B rect red 2 1 3 2 , ellipse blue 5 5 2 1.5` and `shapes B --set "..."`.
+
+**Words beside readings** (`game.reading_word`): 70 and over nearly exact, 50 to 69 close, 30 to 49 recognisable,
+under 30 elsewhere, for both readings. Shown first ("close · 54% in place") on pages, in the client, in `next`
+and in previews; the API carries `in_place_word` and `slid_to_fit_word`.
+
+**Live `next`.** The describer's first `next` says the round's words include their answers and to keep about a
+quarter back; after a question it quotes the question and says to answer it (or that no words are left); the
+builder after asking is told they asked and should wait. A check in a live round is refused with advice that
+depends on whether the describer has words left.
+
+**Deployment** (`deploy/`, see its README). Caddy 2.6.2 is Ubuntu's package; it turns `request_body` overflow into a
+502 inside `reverse_proxy`, so the Caddyfile answers 413 itself when Content-Length is over 64 KB. The virtualenv is
+built from `uv.lock` with the system Python 3.14 and `UV_LINK_MODE=copy`, so it doesn't depend on any user's uv
+cache and works under `ProtectHome`. The first restore of a `cp`-copied database had no tables (its schema was
+still in the -wal file): `restore.sh` and `backup.py` use SQLite's backup API.

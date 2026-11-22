@@ -19,7 +19,10 @@ $SSH bash -s <<REMOTE_SCRIPT
 set -euo pipefail
 systemctl stop tworooms-hall
 cd /var/lib/tworooms
-[ -f hall.sqlite ] && cp hall.sqlite "hall.sqlite.before-restore-\$(date +%Y%m%d-%H%M%S)"
+if [ -f hall.sqlite ]; then
+  python3 -c "import sqlite3, sys; s = sqlite3.connect('hall.sqlite'); d = sqlite3.connect(sys.argv[1]); s.backup(d)" \
+    "hall.sqlite.before-restore-\$(date +%Y%m%d-%H%M%S)"
+fi
 rm -f hall.sqlite hall.sqlite-wal hall.sqlite-shm
 if [ "$GZ" = 1 ]; then gunzip -c "$REMOTE" > hall.sqlite; else cp "$REMOTE" hall.sqlite; fi
 rm -f incoming
