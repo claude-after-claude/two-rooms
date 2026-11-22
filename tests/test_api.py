@@ -62,7 +62,7 @@ def test_whole_letters_game(server):
     res = r["result"]
     assert res["in_place"] == 100.0 and res["slid_to_fit"] == 100.0 and res["picture_shapes"] == perfect
     assert "passed" not in res and "score" not in res and res["loss"] is None and res["others"] == 0
-    assert r["waiting_on"] is None and "In place 100%, slid to fit 100%" in r["next"]
+    assert r["waiting_on"] is None and r["next"].startswith("Nearly exact · 100% in place; nearly exact · 100% slid to fit")
     assert bob.status(f"/api/letters/{lid}/picture.png") == 200
     assert bob.post(f"/api/builds/{bid}/place", {"shape": "rect", "color": "red", "x": 1, "y": 1, "w": 1, "h": 1},
                     expect=409)["error"]
@@ -231,8 +231,10 @@ def test_live_match_with_long_poll(server):
     quiet = alice.get(f"/api/matches/{mid}?since={got['said']['last_event']}&wait=1")
     assert 0.8 < time.time() - t < 5 and quiet["events"] == []
 
-    alice.post(f"/api/matches/{mid}/say", {"text": "how big is the red one compared to the board?"})
-    assert alice.get(f"/api/matches/{mid}")["waiting_on"] == "bob"
+    st = alice.post(f"/api/matches/{mid}/say", {"text": "how big is the red one compared to the board?"})
+    assert st["waiting_on"] == "bob" and "You asked bob a question" in st["next"]
+    bnext = bob.get(f"/api/matches/{mid}")["next"]
+    assert "alice asked" in bnext and "how big is the red one" in bnext and "Answer it" in bnext
     assert anon.get(f"/api/matches/{mid}")["you"]["role"] == "watching"
     assert "events" not in anon.get(f"/api/matches/{mid}")
 
@@ -401,7 +403,10 @@ def test_no_checks_in_live_rounds(server):
     m = a.post("/api/matches", {"open": False})["match"]
     b.post(f"/api/matches/{m}/join")
     a.post(f"/api/builds/{m}/place", {"shape": "rect", "color": "red", "x": 1, "y": 1, "w": 2, "h": 2})
-    assert "live round" in a.post(f"/api/builds/{m}/check", expect=409)["error"]
+    assert "Ask the describer" in a.post(f"/api/builds/{m}/check", expect=409)["error"]
+    b.post(f"/api/matches/{m}/say", {"text": " ".join(["word"] * (2 * LEVELS[1].budget))})
+    assert "no words left" in a.post(f"/api/builds/{m}/check", expect=409)["error"]
+    assert "questions can't be answered" in a.get(f"/api/matches/{m}")["next"]
 
 
 def test_old_database_is_migrated_and_backfilled(tmp_path):
@@ -434,3 +439,25 @@ def test_old_database_is_migrated_and_backfilled(tmp_path):
     assert row["slid"] is not None and row["slid"] >= row["overlap"]
     r = hall2.letter_view(None, lid) if False else hall2.build_state(pb, bid)["result"]
     assert r["slid_to_fit"] == row["slid"] and r["checks"] == []
+
+
+def test_place_several_at_once_and_reading_words(server):
+    base, app = server
+    a, b = Client.new(base, "alice"), Client.new(base, "bob")
+    lid = a.post("/api/letters", {"level": 1})["letter"]
+    a.post(f"/api/letters/{lid}/send", {"text": "two blocks"})
+    bid = b.post(f"/api/letters/{lid}/builds")["build"]
+    d = b.post(f"/api/builds/{bid}/place", [{"shape": "rect", "color": "red", "x": 1, "y": 1, "w": 2, "h": 2},
+                                            {"shape": "ellipse", "color": "blue", "cx": 6.1, "cy": 6, "rx": 1, "ry": 1}])
+    assert d["count"] == 2 and d["placed"] == ["1. rect red 1 1 2 2", "2. ellipse blue 6.125 6 1 1"]
+    assert d["notes"] == ["shape 2: Rounded to steps of 1/8: cx 6.1 → 6.125."]
+    bad = b.post(f"/api/builds/{bid}/place", [{"shape": "rect", "color": "red", "x": 1, "y": 1, "w": 1, "h": 1},
+                                              {"shape": "rect", "color": "pink", "x": 1, "y": 1, "w": 1, "h": 1}], expect=422)
+    assert bad["error"].startswith("Shape 2:") and "Nothing was placed" in bad["error"]
+    assert b.get(f"/api/builds/{bid}")["count"] == 2
+    truth = D.loads(app.state.hall.picture(app.state.hall.letter(lid)["picture_id"])["shapes"])
+    b.put(f"/api/builds/{bid}/shapes", truth)
+    r = b.post(f"/api/builds/{bid}/submit")
+    assert r["result"]["in_place_word"] == "nearly exact" and r["next"].startswith("Nearly exact · 100% in place")
+    from tworooms.game import reading_word
+    assert [reading_word(v) for v in (70, 69.9, 50, 30, 29.9)] == ["nearly exact", "close", "close", "recognisable", "elsewhere"]

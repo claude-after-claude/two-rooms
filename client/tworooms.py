@@ -10,6 +10,8 @@
     tworooms.py letter LETTER                  # one letter, with its results when you may see them
     tworooms.py take LETTER                    # prints the words, starts a build
     tworooms.py place BUILD rect red 2 1 3 2  |  ellipse blue 5 5 2 1.5  |  triangle green 1 1 4 1 1 5
+                                               # several at once: place BUILD rect red 2 1 3 2 , ellipse blue 5 5 2 1.5
+    tworooms.py shapes BUILD [--set "rect red 2 1 3 2, ellipse blue 5 5 2 1.5"]   # list, or replace the whole board
     tworooms.py shapes BUILD                   # the shapes placed so far
     tworooms.py board BUILD                    # saves the board image
     tworooms.py check BUILD                    # the two readings for the board as it stands (letters: twice)
@@ -271,7 +273,7 @@ def cmd_letter(api: Api, a):
     if d.get("picture_url") and a.save:
         print(f"Picture saved at {save_image(api, d['picture_url'], a.out, f'letter-{a.letter}-picture.png')}")
     for r in d.get("results", []):
-        print(f"  {r['builder']}: in place {_pct(r['in_place'])}, slid to fit {_pct(r['slid_to_fit'])}  board {r['board_url']}")
+        print(f"  {r['builder']}: {_said(r['in_place'])} in place, {_said(r['slid_to_fit'])} slid to fit  board {r['board_url']}")
         if r.get("note"):
             print(f"    note: {r['note']}")
     for o in d.get("same_picture", []):
@@ -328,13 +330,47 @@ def _print_build(d):
 
 def cmd_place(api: Api, a):
     api.need_key()
-    d = api.post(f"/api/builds/{a.build}/place", _parse_shape(a.shape))
-    print(f"Placed {d['placed']}  ({d['count']} on the board; `shapes {a.build}` lists them)")
+    shapes = _parse_shapes(a.shape)
+    d = api.post(f"/api/builds/{a.build}/place", shapes if len(shapes) > 1 else shapes[0])
+    placed = d["placed"] if isinstance(d["placed"], list) else [d["placed"]]
+    tail = f"  ({d['count']} on the board; `shapes {a.build}` lists them)"
+    if len(placed) == 1:
+        print(f"Placed {placed[0]}{tail}")
+    else:
+        for line in placed:
+            print(f"Placed {line}")
+        print(tail.strip())
     for n in d.get("notes", []):
         print(f"  {n}")
 
 
+def _parse_shapes(args) -> list[dict]:
+    """'rect red 2 1 3 2 , ellipse blue 5 5 2 1.5' -> two shapes. Commas may touch the numbers."""
+    text = " ".join(args) if isinstance(args, list) else args
+    parts = [p.split() for p in text.replace(";", ",").split(",")]
+    parts = [p for p in parts if p]
+    if not parts:
+        raise Fail("say what to place: rect COLOR X Y W H | ellipse COLOR CX CY RX RY | triangle COLOR X1 Y1 X2 Y2 X3 Y3"
+                   " (several, separated by commas)")
+    out = []
+    for i, p in enumerate(parts):
+        try:
+            out.append(_parse_shape(p))
+        except Fail as e:
+            raise Fail(f"shape {i + 1} ({' '.join(p)}): {e}" if len(parts) > 1 else str(e))
+    return out
+
+
 def cmd_shapes(api: Api, a):
+    if a.set is not None:
+        api.need_key()
+        shapes = _parse_shapes(a.set) if a.set.strip() else []
+        d = api.request("PUT", f"/api/builds/{a.build}/shapes", shapes)
+        print(f"The board now holds {d['count']} shape{'s' if d['count'] != 1 else ''}:")
+        _print_build(d)
+        for n in d.get("notes", []):
+            print(f"  {n}")
+        return
     d = api.get(f"/api/builds/{a.build}")
     print(f"Build {d['build']} ({d['status']}), level {d['level']}, word {d['word']}: {d['board']}")
     _print_build(d)
@@ -390,6 +426,14 @@ def _pct(v):
     return f"{round(v)}%"
 
 
+def _word(v):
+    return "nearly exact" if v >= 70 else "close" if v >= 50 else "recognisable" if v >= 30 else "elsewhere"
+
+
+def _said(v):
+    return f"{_word(v)} · {_pct(v)}"
+
+
 def _print_readings(r, slide=None, prefix=""):
     where = ""
     if slide and (slide.get("right") or slide.get("up")):
@@ -399,8 +443,9 @@ def _print_readings(r, slide=None, prefix=""):
         if slide["up"]:
             parts.append(f"{abs(slide['up']):g} {'up' if slide['up'] > 0 else 'down'}")
         where = f", best slid {' and '.join(parts)}"
-    print(f"{prefix}In place:    {_pct(r['in_place']):>4}   of the cells painted on either board, the share painted the same colour, as built")
-    print(f"{prefix}Slid to fit: {_pct(r['slid_to_fit']):>4}   the same, sliding the whole build up to 3 units to where it fits best{where}")
+    w = max(len(_said(r["in_place"])), len(_said(r["slid_to_fit"])))
+    print(f"{prefix}In place:    {_said(r['in_place']):<{w}}   of the cells painted on either board, the share painted the same colour, as built")
+    print(f"{prefix}Slid to fit: {_said(r['slid_to_fit']):<{w}}   the same, sliding the whole build up to 3 units to where it fits best{where}")
 
 
 def cmd_check(api: Api, a):
@@ -489,8 +534,8 @@ def _print_match(api: Api, d, a, new_events=None, compact=False):
                 print(f"  new · round {e['round']} started: level {e['level']}, {e['describer']} describes, "
                       f"{e['builder']} builds, word {e['word']}")
             elif e["kind"] == "round_finished":
-                print(f"  new · round {e['round']} finished: in place {_pct(e['in_place'])}, slid to fit "
-                      f"{_pct(e['slid_to_fit'])}  {e.get('url', '')}")
+                print(f"  new · round {e['round']} finished: {_said(e['in_place'])} in place, "
+                      f"{_said(e['slid_to_fit'])} slid to fit  {e.get('url', '')}")
             elif e["kind"] in ("joined", "match_finished", "match_abandoned"):
                 print(f"  new · {e['kind'].replace('_', ' ')}" + (f": {e['player']}" if e.get("player") else ""))
     if cur:
@@ -505,8 +550,8 @@ def _print_match(api: Api, d, a, new_events=None, compact=False):
         if you == "builder":
             print(f"Your board: {len(cur.get('shapes', []))} shapes placed.")
     for r in ([] if compact else d.get("finished_rounds", [])):
-        print(f"  round {r['n']}: level {r['level']}, {r['describer']} → {r['builder']}, in place {_pct(r['in_place'])}, "
-              f"slid to fit {_pct(r['slid_to_fit'])}  {r['url']}")
+        print(f"  round {r['n']}: level {r['level']}, {r['describer']} → {r['builder']}, {_said(r['in_place'])} in place, "
+              f"{_said(r['slid_to_fit'])} slid to fit  {r['url']}")
     _remember(api, d)
     show_next(d)
 
@@ -593,7 +638,7 @@ def main(argv=None):
     add("take", cmd_take, "letter")
     p = add("place", cmd_place, "build")
     p.add_argument("shape", nargs=argparse.REMAINDER)
-    add("shapes", cmd_shapes, "build")
+    add("shapes", cmd_shapes, "build", set={"help": 'replace the whole board: "rect red 2 1 3 2, ellipse blue 5 5 2 1.5"'})
     p = add("board", cmd_board, "build")
     p.add_argument("--grid", dest="grid", action="store_true", default=None)
     p.add_argument("--no-grid", dest="grid", action="store_false")

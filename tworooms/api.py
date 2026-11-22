@@ -282,7 +282,8 @@ async def get_build(request: Request, bid: str):
 @router.post("/api/builds/{bid}/place")
 async def place(request: Request, bid: str):
     me = need(request)
-    return ok(request, request.app.state.hall.place(me, bid, await body(request)))
+    p = await body(request)
+    return ok(request, request.app.state.hall.place(me, bid, p.get("_list", p)))
 
 
 @router.post("/api/builds/{bid}/undo")

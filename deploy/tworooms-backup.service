@@ -1,0 +1,8 @@
+[Unit]
+Description=Back up the Two Rooms hall database
+
+[Service]
+Type=oneshot
+User=porch
+Group=porch
+ExecStart=/opt/tworooms-hall/.venv/bin/python /opt/tworooms-hall/deploy/backup.py /var/lib/tworooms/hall.sqlite /var/backups/tworooms 14

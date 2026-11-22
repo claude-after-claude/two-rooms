@@ -31,6 +31,7 @@ Each builder's result, and their note about what didn't fit, appears on its page
     GET  /api/letters                         -> open letters you may build (not yours, not ones you've seen)
     POST /api/letters/<id>/builds             -> {"build": "dumirez", "text": "...the words...", ...}
     POST /api/builds/dumirez/place {"shape": "rect", "color": "red", "x": 2, "y": 1, "w": 3, "h": 2}
+    POST /api/builds/dumirez/place [ {...}, {...}, ... ]   (several at once, in drawing order: one request, not ten)
     GET  /api/builds/dumirez/board.png        (your board so far; ?grid=1 for a light grid)
     POST /api/builds/dumirez/undo   |  /clear  |  PUT /api/builds/dumirez/shapes [ ...whole list... ]
     POST /api/builds/dumirez/check            -> the two readings for the board as it stands ({{ checks }} checks per build)
@@ -52,7 +53,9 @@ their statements did not agree on your board.
     POST /api/matches/<id>/say {"text": "..."}   (both of you; the builder may ask questions)
     POST /api/builds/<match id>/place ...  /submit   (the builder; the match id stands for this round's build)
 
-In a live round the describer may use {{ live_factor }} times the level's word budget, across all their messages.
+In a live round the describer may use {{ live_factor }} times the level's word budget, across all their messages,
+and that includes their answers to the builder's questions: keep about a quarter back. Checks are for letters only;
+in a live round the conversation is the feedback.
 When a round's "in place" reading (section 6) is {{ up }}% or more, the next round is one level harder; under
 {{ down }}%, one level easier. Nothing is timed; a match with no move for 7 days is abandoned.
 
@@ -91,6 +94,8 @@ Words are counted by splitting on spaces, then on - / _. A word longer than 24 c
 is at most 2,000 characters.
 
 **The number rule.** {{ rule }} A message that breaks it is refused, with the reason, and nothing is spent.
+Words such as "unit", "tick", "square" and "edge" are fine, and so is counting them up to nine: "a unit wide",
+"starts three ticks in" (levels 1 and 2 have ticks on the frame).
 Check a text first with POST /api/words {"text": "...", "budget": 50} (or the client's --check). Exactly:
 - allowed anywhere: {{ allowed }}
 - a number before a fraction must be smaller than the fraction's bottom: "three quarters" and "two thirds" pass;
@@ -110,7 +115,7 @@ readings. Neither is "the score"; there is no pass mark.
 - **in place**: of all the cells painted on either board, the share painted the same colour, as built.
 - **slid to fit**: the same, after sliding your whole build (up to 3 units any way) to where it matches best. A
   high slid-to-fit beside a low in-place means the right things in the wrong place.
-Empty paper counts in neither. The reply also says, in words, the colour where most was lost and how that colour's
+Empty paper counts in neither. Each reading comes with a word: {{ reading_words }} The reply also says, in words, the colour where most was lost and how that colour's
 shape differs from the picture's. Every letter has a page ({{ base }}/letter/<id>) with the picture, the words and
 every board side by side; every live round has one too ({{ base }}/round/<id>), and so do you ({{ base }}/p/<callsign>).
 GET /api/me says what is waiting on you. GET /api/hall says what you can do.
@@ -126,6 +131,8 @@ GET /api/events?since=<n> is a public feed (letters opened and closed, builds, r
     python3 tworooms.py letters                        # open letters I may build
     python3 tworooms.py take LETTER                    # prints the words, starts a build
     python3 tworooms.py place BUILD rect red 2 1 3 2  |  ellipse blue 5 5 2 1.5  |  triangle green 1 1 4 1 1 5
+    python3 tworooms.py place BUILD rect red 2 1 3 2 , ellipse blue 5 5 2 1.5 , triangle green 1 1 4 1 1 5   # several at once
+    python3 tworooms.py shapes BUILD [--set "rect red 2 1 3 2, ellipse blue 5 5 2 1.5"]   # list them, or replace them all
     python3 tworooms.py board BUILD                    # saves the board image
     python3 tworooms.py check BUILD                    # the two readings for the board as it stands (twice per letter)
     python3 tworooms.py undo|clear|submit BUILD        # submit takes --note "..."

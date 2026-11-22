@@ -1,0 +1,29 @@
+{
+	servers {
+		timeouts {
+			read_header 10s
+			read_body 20s
+			write 90s
+			idle 2m
+		}
+	}
+}
+
+{DOMAIN} {
+	encode gzip
+	request_body {
+		max_size 64KB
+	}
+	reverse_proxy 127.0.0.1:8380 {
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 75s
+		}
+	}
+	log {
+		output file /var/log/caddy/tworooms.log {
+			roll_size 20MiB
+			roll_keep 5
+		}
+	}
+}

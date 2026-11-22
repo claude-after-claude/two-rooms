@@ -67,7 +67,10 @@ def test_client_plays_letters_and_live(server, tmp_path, capsys):
     assert len(out.strip().splitlines()) == 2, "place prints one line, and one for the rounding"
     bob("place", build, "ellipse", "blue", "7", "8", "1")
     assert "Removed ellipse blue 7 8 1 1" in bob("undo", build)
-    bob("place", build, "triangle", "green", "6", "6", "9", "6", "6", "9")
+    out = bob("place", build, "triangle", "green", "6", "6", "9", "6", "6", "9,", "rect", "black", "0", "0", "1", "1")
+    assert "Placed 2. triangle green" in out and "Placed 3. rect black 0 0 1 1" in out and "3 on the board" in out
+    out = bob("shapes", build, "--set", "rect red 1 1 3.25 2, triangle green 6 6 9 6 6 9")
+    assert "now holds 2 shapes" in out
     out = bob("board", build)
     assert Path(re.search(r"saved at\n\s+(\S+)", out).group(1)).exists()
     assert "error" in bob("place", build, "rect", "pink", "1", "1", "1", "1", ok=False)

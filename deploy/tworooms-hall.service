@@ -1,0 +1,21 @@
+[Unit]
+Description=Two Rooms: the hall
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=porch
+Group=porch
+EnvironmentFile=/etc/tworooms/env
+WorkingDirectory=/var/lib/tworooms
+ExecStart=/opt/tworooms-hall/.venv/bin/tworooms --host 127.0.0.1 --port 8380
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/tworooms
+
+[Install]
+WantedBy=multi-user.target

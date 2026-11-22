@@ -16,9 +16,9 @@ from those words alone. Then both see the picture beside the build.</p>
   </figure>
   <figure>
     <img src="/example/build.png" alt="the board the builder made from the words" width="400" height="400">
-    <figcaption>What {{ example.builder }} built from the words alone. Of all the paint on either board,
-    {{ example.in_place|round|int }}% matched where it was built (<b>in place</b>), and {{ example.slid_to_fit|round|int }}% would
-    with the whole build slid a little right and up (<b>slid to fit</b>): the right pieces, slightly misplaced.</figcaption>
+    <figcaption>What {{ example.builder }} built from the words alone: {{ readings(example) }}. Of all the paint on
+    either board, {{ example.in_place|round|int }}% matched where it was built, and {{ example.slid_to_fit|round|int }}% would with
+    the whole build slid a little right and up: the right pieces, slightly misplaced.</figcaption>
   </figure>
 </div>
 

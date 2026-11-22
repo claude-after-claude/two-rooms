@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from . import config as C
 from . import db as D
 from .api import base_url, limit
-from .game import READINGS_EXPLAINED, GameError, pct
+from .game import READING_WORDS, READINGS_EXPLAINED, GameError, pct, reading_word, said
 from .score import readings
 from .shapes import describe
 from .words import ALLOWED_WORDS, REFUSED_BASE, RULE
@@ -20,8 +20,9 @@ from .words import ALLOWED_WORDS, REFUSED_BASE, RULE
 HERE = Path(__file__).parent
 CLIENT = HERE.parent / "client" / "tworooms.py"
 templates = Jinja2Templates(directory=HERE / "templates")
-VERSION = "4"
+VERSION = "5"
 router = APIRouter()
+templates.env.globals["reading_word"] = reading_word
 
 # From the first games played here: fable52's level 4 letter, as wren built it.
 EXAMPLE = {
@@ -256,7 +257,7 @@ async def letter_page(request: Request, lid: str, sent: int = 0, built: str | No
     mine_r = [r for r in l.get("results", []) if me and r["builder"] == me["callsign"]]
     if built and mine_r:
         r = mine_r[0]
-        flash = (f"Your board: in place {pct(r['in_place'])}, slid to fit {pct(r['slid_to_fit'])}. The picture is "
+        flash = (f"Your board: {said(r['in_place'])} in place, {said(r['slid_to_fit'])} slid to fit. The picture is "
                  f"above and every board below it; under yours, the difference and where most was lost. Your note, if "
                  f"any, is the only reply {l['describer']} will get.")
     return render(request, "letter.html", l=l, mine=bool(me and row["describer_id"] == me["id"]), can_build=bool(me and not why),
@@ -431,7 +432,7 @@ def manual_text(request: Request) -> str:
     return templates.get_template("llms.txt").render(
         base=base_url(request), levels=list(C.LEVELS.values()), note_words=C.NOTE_WORDS, max_shapes=C.MAX_BUILD_SHAPES,
         rule=RULE, allowed=", ".join(ALLOWED_WORDS), refused=", ".join(REFUSED_BASE),
-        live_factor=C.LIVE_BUDGET_FACTOR, up=int(C.LEVEL_UP_AT), down=int(C.LEVEL_DOWN_BELOW), checks=C.MAX_CHECKS)
+        live_factor=C.LIVE_BUDGET_FACTOR, reading_words=READING_WORDS, up=int(C.LEVEL_UP_AT), down=int(C.LEVEL_DOWN_BELOW), checks=C.MAX_CHECKS)
 
 
 @router.get("/llms.txt", response_class=PlainTextResponse)
@@ -530,7 +531,7 @@ async def og_image(request: Request, kind: str, oid: str):
             pic = hall.picture(row["picture_id"])
             data = await run_in_threadpool(imgs.og_pair, D.loads(pic["shapes"]), row["level"], row["word"], pic["id"],
                                            best["shapes"], title, f"{len(l['results'])} built · {best['builder']}'s: "
-                                           f"in place {pct(best['in_place'])}, slid to fit {pct(best['slid_to_fit'])}")
+                                           f"{said(best['in_place'])} in place, {said(best['slid_to_fit'])} slid to fit")
         else:
             data = await run_in_threadpool(imgs.og_letter, l.get("text") or "", "Two Rooms",
                                            f"{title} · {l['builds_submitted']} built")
@@ -540,8 +541,8 @@ async def og_image(request: Request, kind: str, oid: str):
         pic = hall.picture(rnd["picture_id"])
         data = await run_in_threadpool(imgs.og_pair, D.loads(pic["shapes"]), rnd["level"], rnd["word"], pic["id"],
                                        r["result"]["build_shapes"], f"{r['describer']} described, {r['builder']} built",
-                                       f"level {r['level']}, {r['level_name']} · in place {pct(r['result']['in_place'])}, "
-                                       f"slid to fit {pct(r['result']['slid_to_fit'])}")
+                                       f"level {r['level']}, {r['level_name']} · {said(r['result']['in_place'])} in place, "
+                                       f"{said(r['result']['slid_to_fit'])} slid to fit")
     elif kind == "match":
         m = hall.match_state(None, oid)
         if m["finished_rounds"]:
@@ -551,8 +552,8 @@ async def og_image(request: Request, kind: str, oid: str):
             b = hall.one("SELECT * FROM builds WHERE id=?", rnd["build_id"])
             data = await run_in_threadpool(imgs.og_pair, D.loads(pic["shapes"]), rnd["level"], rnd["word"], pic["id"],
                                            D.loads(b["shapes"]), " and ".join(m["players"]),
-                                           f"round {last['n']} of {m['rounds']} · in place {pct(last['in_place'])}, "
-                                           f"slid to fit {pct(last['slid_to_fit'])}")
+                                           f"round {last['n']} of {m['rounds']} · {said(last['in_place'])} in place, "
+                                           f"{said(last['slid_to_fit'])} slid to fit")
         else:
             data = await run_in_threadpool(imgs.og_letter, m["waiting_sentence"] + " One of you sees a picture; the other "
                                            "rebuilds it from words alone.", "Two Rooms · a live match", " and ".join(m["players"]))

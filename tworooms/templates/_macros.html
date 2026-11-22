@@ -2,15 +2,16 @@
 
 {% macro readings(r, short=False) -%}
 {%- if r.in_place is not none -%}
-<span class="readings"><span class="rd" title="In place: of all the cells painted on either board, the share painted the same colour, as built."><b>{{ r.in_place|round|int }}%</b> in place</span>
-<span class="rd" title="Slid to fit: the same, after sliding the whole build (up to 3 units any way) to where it matches best."><b>{{ r.slid_to_fit|round|int }}%</b> {{ 'slid' if short else 'slid to fit' }}</span></span>
+<span class="readings"><span class="rd" title="In place: of all the cells painted on either board, the share painted the same colour, as built."><i>{{ reading_word(r.in_place) }}</i> · <b>{{ r.in_place|round|int }}%</b> in place</span>
+<span class="rd" title="Slid to fit: the same, after sliding the whole build (up to 3 units any way) to where it matches best."><i>{{ reading_word(r.slid_to_fit) }}</i> · <b>{{ r.slid_to_fit|round|int }}%</b> {{ 'slid' if short else 'slid to fit' }}</span></span>
 {%- else %}<span class="muted">—</span>{% endif -%}
 {%- endmacro %}
 
 {% macro explain() -%}
 <p class="small muted explain"><b>In place</b>: of all the cells painted on either board, the share painted the same
 colour, as built. <b>Slid to fit</b>: the same after sliding the whole build, up to three units any way, to where it
-matches best; high beside a low in-place means the right things in the wrong place. Empty paper counts in neither.</p>
+matches best; high beside a low in-place means the right things in the wrong place. Empty paper counts in neither.
+70% and over reads <i>nearly exact</i>, 50 to 69 <i>close</i>, 30 to 49 <i>recognisable</i>, under 30 <i>elsewhere</i>.</p>
 {%- endmacro %}
 
 {% macro pair(item) -%}
@@ -20,10 +21,8 @@ matches best; high beside a low in-place means the right things in the wrong pla
     {% if item.board_url %}<img src="{{ item.board_url }}?framed=1&size=260" alt="what was built" loading="lazy" width="260" height="260">
     {% else %}<div class="muted small" style="display:grid;place-items:center;background:#eee7d8">nobody built it</div>{% endif %}
   </div>
-  <div class="cap">
-    <span>{{ item.describer }} → {{ item.builders|join(', ') or '—' }}</span>
-    <span>{% if item.readings %}{{ readings(item.readings[0], short=True) }}{% if item.readings|length > 1 %} <span class="muted">+{{ item.readings|length - 1 }}</span>{% endif %}{% endif %}</span>
-  </div>
+  <div class="cap"><span>{{ item.describer }} → {{ item.builders|join(', ') or '—' }}</span></div>
+  {% if item.readings %}<div class="cap"><span>{{ readings(item.readings[0], short=True) }}{% if item.readings|length > 1 %} <span class="muted">(best of {{ item.readings|length }})</span>{% endif %}</span></div>{% endif %}
   <div class="cap muted"><span>{{ 'letter' if item.kind == 'letter' else 'live round' }} · level {{ item.level }} · {{ item.words }} words</span><span>{{ item.when[:10] }}</span></div>
 </a>
 {%- endmacro %}

@@ -45,6 +45,20 @@ def pct(v) -> str:
     return "?" if v is None else f"{round(v)}%"
 
 
+def reading_word(v) -> str:
+    """A word for a reading, so nobody needs the scale explained."""
+    if v is None:
+        return ""
+    return "nearly exact" if v >= 70 else "close" if v >= 50 else "recognisable" if v >= 30 else "elsewhere"
+
+
+def said(v) -> str:
+    """'close · 54%'"""
+    return "?" if v is None else f"{reading_word(v)} · {round(v)}%"
+
+
+READING_WORDS = "70% and over: nearly exact; 50 to 69: close; 30 to 49: recognisable; under 30: elsewhere."
+
 READINGS_EXPLAINED = {
     "in_place": "Of all the cells painted on either board, the share painted the same colour, as built.",
     "slid_to_fit": "The same, after sliding the whole build (up to 3 units any way) to where it matches best: "
@@ -384,10 +398,12 @@ class Hall:
     @staticmethod
     def _readings(row) -> dict:
         return {"in_place": row["overlap"], "slid_to_fit": row["slid"],
+                "in_place_word": reading_word(row["overlap"]), "slid_to_fit_word": reading_word(row["slid"]),
                 "slide": {"right": (row["slide_dx"] or 0) / 8, "up": (row["slide_dy"] or 0) / 8}}
 
     def _checks(self, b) -> list[dict]:
         return [{"check": c["n"], "in_place": c["in_place"], "slid_to_fit": c["slid"], "at": iso(c["created"]),
+                 "in_place_word": reading_word(c["in_place"]), "slid_to_fit_word": reading_word(c["slid"]),
                  "board_url": f"/api/builds/{b['id']}/checks/{c['n']}.png"}
                 for c in self.all("SELECT * FROM checks WHERE build_id=? ORDER BY n", b["id"])]
 
@@ -543,19 +559,31 @@ class Hall:
         self.db.execute("UPDATE builds SET shapes=?, updated=? WHERE id=?", (D.dumps(shapes), D.now(), b["id"]))
 
     def place(self, me, bid, raw) -> dict:
+        """One shape, or a list of shapes placed in order on top of what is there."""
         b = self.resolve_build(me, bid)
         self._mine(me, b)
-        try:
-            s, notes = normalise(raw)
-        except ShapeError as e:
-            raise GameError(422, str(e))
-        shapes = D.loads(b["shapes"]) + [s]
+        if isinstance(raw, dict) and isinstance(raw.get("shapes"), list):
+            raw = raw["shapes"]
+        many = raw if isinstance(raw, list) else [raw]
+        if not many:
+            raise GameError(422, "Nothing to place: send one shape, or a list of shapes.")
+        before = D.loads(b["shapes"])
+        new, notes = [], []
+        for i, r in enumerate(many):
+            try:
+                s, n = normalise(r)
+            except ShapeError as e:
+                raise GameError(422, (f"Shape {i + 1}: {e}" if len(many) > 1 else str(e)) + " Nothing was placed.")
+            new.append(s)
+            notes += [f"shape {len(before) + i + 1}: {x}" if len(many) > 1 else x for x in n]
+        shapes = before + new
         with D.tx(self.db):
             self._set_shapes(b, shapes)
         out = self.build_state(me, b["id"])
-        out["placed"] = f"{len(shapes)}. {describe(s)}"
+        lines = [f"{len(before) + i + 1}. {describe(s)}" for i, s in enumerate(new)]
+        out["placed"] = lines[0] if len(lines) == 1 else lines
         if notes:
-            out["notes"] = [" ".join(notes)]
+            out["notes"] = notes
         return out
 
     def undo(self, me, bid) -> dict:
@@ -633,11 +661,12 @@ class Hall:
                 self._finish_round(rnd, res)
         out = self.build_state(me, b["id"])
         r = out["result"]
-        said = f"In place {pct(r['in_place'])}, slid to fit {pct(r['slid_to_fit'])}."
+        said_ = f"{said(r['in_place'])} in place; {said(r['slid_to_fit'])} slid to fit."
+        said_ = said_[0].upper() + said_[1:]
         if letter:
             others = ("You are its first builder." if not r["others"] else
                       f"{plural(r['others'], 'other player')} built this letter too.")
-            out["next"] = (f"{said} {others} See the picture beside every board at {r['page_url']}. Then build another "
+            out["next"] = (f"{said_} {others} See the picture beside every board at {r['page_url']}. Then build another "
                            "letter (GET /api/letters) or describe a picture (POST /api/letters {\"level\": N}).")
         else:
             m = self.one("SELECT * FROM matches WHERE id=?", rnd["match_id"])
@@ -648,7 +677,7 @@ class Hall:
                 change = ("one level harder" if nxt["level"] > rnd["level"] else
                           "one level easier" if nxt["level"] < rnd["level"] else "at the same level")
                 then = (f"Round {nxt['n']} has started {change}, with roles swapped: GET /api/matches/{m['id']}.")
-            out["next"] = f"{said} {then}"
+            out["next"] = f"{said_} {then}"
         return out
 
     def check(self, me, bid) -> dict:
@@ -657,7 +686,13 @@ class Hall:
         self._mine(me, b)
         letter, rnd = self._build_context(b)
         if not letter:
-            raise GameError(409, "Checks are for letters. In a live round, ask the describer instead.")
+            used = self.one("SELECT COALESCE(SUM(words), 0) AS n FROM messages WHERE round_id=? AND role='describer'",
+                            rnd["id"])["n"]
+            if used >= C.live_budget(rnd["level"]):
+                raise GameError(409, "Checks are for letters; in a live round the conversation is the feedback. The "
+                                     "describer has no words left this round, so submit when you are ready.")
+            raise GameError(409, "Checks are for letters; in a live round the conversation is the feedback. Ask the "
+                                 f"describer: POST /api/matches/{rnd['match_id']}/say.")
         shapes = D.loads(b["shapes"])
         if not shapes:
             raise GameError(409, "The board is empty; place something before checking.")
@@ -675,8 +710,9 @@ class Hall:
         return {
             "build": b["id"], "check": done + 1, "checks_left": left,
             "in_place": res["in_place"], "slid_to_fit": res["slid_to_fit"], "readings_explained": READINGS_EXPLAINED,
+            "in_place_word": reading_word(res["in_place"]), "slid_to_fit_word": reading_word(res["slid_to_fit"]),
             "board_url": f"/api/builds/{b['id']}/checks/{done + 1}.png", "waiting_on": me["callsign"],
-            "next": (f"Check {done + 1}: in place {pct(res['in_place'])}, slid to fit {pct(res['slid_to_fit'])}. "
+            "next": (f"Check {done + 1}: {said(res['in_place'])} in place, {said(res['slid_to_fit'])} slid to fit. "
                      + ("A high slid-to-fit with a low in-place means the right things in the wrong place. "
                         if res["slid_to_fit"] - res["in_place"] >= 20 else "")
                      + (f"{plural(left, 'check')} left. " if left else "No checks left. ")
@@ -774,6 +810,8 @@ class Hall:
         self.mark_seen(rnd["builder_id"], rnd["picture_id"])
         m = self.match(rnd["match_id"])
         self.event("round_finished", {"round": rnd["n"], "round_id": rnd["id"], "in_place": res["in_place"],
+                                      "in_place_word": reading_word(res["in_place"]),
+                                      "slid_to_fit_word": reading_word(res["slid_to_fit"]),
                                       "slid_to_fit": res["slid_to_fit"], "url": f"/round/{rnd['id']}"},
                    public=False, match_id=m["id"])
         self.event("round_finished", {"round": rnd["id"], "match": m["id"], "level": rnd["level"],
@@ -991,19 +1029,33 @@ class Hall:
         words_left = C.live_budget(rnd["level"]) - self.one(
             "SELECT COALESCE(SUM(words), 0) AS n FROM messages WHERE round_id=? AND role='describer'", rnd["id"])["n"]
         wait = f" When you have nothing to add, GET /api/matches/{mid}?since=<last_event>&wait=60 waits for the next move."
+        msgs = self._round_messages(rnd["id"])
+        d_name, b_name = self.callsign(rnd["describer_id"]), self.callsign(rnd["builder_id"])
         if role == "describer":
-            if waiting_on == self.callsign(rnd["describer_id"]):
+            if waiting_on == d_name and msgs and msgs[-1]["role"] == "builder":
+                if words_left <= 0:
+                    return (f"{b_name} asked: \"{msgs[-1]['text']}\" You have no words left this round, so they must "
+                            "work with what you said." + wait)
+                return (f"{b_name} asked: \"{msgs[-1]['text']}\" Answer it: POST /api/matches/{mid}/say "
+                        f"{{\"text\": \"...\"}} ({words_left} words left this round)." + wait)
+            if waiting_on == d_name:
+                keep = max(1, round(C.live_budget(rnd["level"]) / 4))
                 return (f"You are the describer. Look at the picture (GET /api/matches/{mid}/picture.png; its frame says "
-                        f"{rnd['word']}) and describe it: POST /api/matches/{mid}/say {{\"text\": \"...\"}}. No numbers; "
-                        f"{words_left} words left this round." + wait)
-            return (f"You are the describer. The builder has your words; answer their questions when they ask "
-                    f"({words_left} words left)." + wait)
-        if waiting_on == self.callsign(rnd["builder_id"]):
+                        f"{rnd['word']}) and describe it: POST /api/matches/{mid}/say {{\"text\": \"...\"}}. You have "
+                        f"{words_left} words for the whole round, answers to {b_name}'s questions included: keep about "
+                        f"{keep} back. Count to nine, cut in halves, thirds and quarters, no digits." + wait)
+            return (f"You are the describer. {b_name} has your words; answer their questions when they ask "
+                    f"({words_left} words left this round)." + wait)
+        if waiting_on == b_name:
+            ask = (f", ask questions (POST /api/matches/{mid}/say)" if words_left > 0 else
+                   f" ({d_name} has no words left this round, so questions can't be answered)")
             return (f"You are the builder. Read the chat, place shapes (POST /api/builds/{mid}/place), look at your board "
-                    f"(GET /api/builds/{mid}/board.png), ask questions (POST /api/matches/{mid}/say), then "
-                    f"POST /api/builds/{mid}/submit." + wait)
-        return ("You are the builder. The describer hasn't spoken yet (or you asked a question); wait for their words."
-                + wait + f" You can place shapes meanwhile: POST /api/builds/{mid}/place.")
+                    f"(GET /api/builds/{mid}/board.png){ask}, then POST /api/builds/{mid}/submit." + wait)
+        if not any(x["role"] == "describer" for x in msgs):
+            return (f"You are the builder. {d_name} hasn't described the picture yet; wait for their words."
+                    + wait + f" You can place shapes meanwhile: POST /api/builds/{mid}/place.")
+        return (f"You are the builder. You asked {d_name} a question; wait for the answer."
+                + wait + f" You can keep building meanwhile: POST /api/builds/{mid}/place.")
 
     def matches_waiting(self, exclude_id=None) -> list[dict]:
         rows = self.all("SELECT * FROM matches WHERE status='waiting' AND open=1 AND hidden=0 ORDER BY created")
