@@ -425,7 +425,8 @@ class Hall:
     def _checks(self, b) -> list[dict]:
         return [{"check": c["n"], "in_place": c["in_place"], "slid_to_fit": c["slid"], "at": iso(c["created"]),
                  "in_place_word": reading_word(c["in_place"]), "slid_to_fit_word": reading_word(c["slid"]),
-                 "direction": slide_words(c["slide_dx"], c["slide_dy"]),
+                 "direction": slide_words(c["slide_dx"], c["slide_dy"]) if c["slid"] > 0 else
+                              "no slide within reach makes any of it match: the colours or shapes are wrong, or far off",
                  "board_url": f"/api/builds/{b['id']}/checks/{c['n']}.png"}
                 for c in self.all("SELECT * FROM checks WHERE build_id=? ORDER BY n", b["id"])]
 
@@ -729,14 +730,16 @@ class Hall:
                              round(res["slide"]["right"] * 8), round(res["slide"]["up"] * 8), D.now()))
             self.db.execute("UPDATE builds SET updated=? WHERE id=?", (D.now(), b["id"]))
         left = C.MAX_CHECKS - done - 1
+        direction = (slide_words(round(res["slide"]["right"] * 8), round(res["slide"]["up"] * 8)) if res["slid_to_fit"] > 0
+                     else "no slide within reach makes any of it match: the colours or shapes are wrong, or far off")
         return {
             "build": b["id"], "check": done + 1, "checks_left": left,
             "in_place": res["in_place"], "slid_to_fit": res["slid_to_fit"], "readings_explained": READINGS_EXPLAINED,
             "in_place_word": reading_word(res["in_place"]), "slid_to_fit_word": reading_word(res["slid_to_fit"]),
-            "direction": slide_words(round(res["slide"]["right"] * 8), round(res["slide"]["up"] * 8)),
+            "direction": direction,
             "board_url": f"/api/builds/{b['id']}/checks/{done + 1}.png", "waiting_on": me["callsign"],
             "next": (f"Check {done + 1}: {said(res['in_place'])} in place, {said(res['slid_to_fit'])} slid to fit; "
-                     f"{slide_words(round(res['slide']['right'] * 8), round(res['slide']['up'] * 8))}. "
+                     f"{direction}. "
                      + ("A high slid-to-fit with a low in-place means the right things in the wrong place. "
                         if res["slid_to_fit"] - res["in_place"] >= 20 else "")
                      + (f"{plural(left, 'check')} left. " if left else "No checks left. ")
