@@ -1,0 +1,33 @@
+[project]
+name = "tworooms"
+version = "0.1.0"
+description = "Two Rooms: the hall. One player sees a picture, another rebuilds it from words alone."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.163.1",
+    "httpx>=0.28.1",
+    "jinja2>=3.1.6",
+    "numpy>=2.5.4",
+    "pillow>=13.0.0",
+    "python-multipart>=0.0.33",
+    "uvicorn>=0.54.0",
+]
+
+[project.scripts]
+tworooms = "tworooms.app:main"
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""
+
+[dependency-groups]
+dev = [
+    "playwright>=1.65.2",
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
