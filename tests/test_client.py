@@ -77,7 +77,7 @@ def test_client_plays_letters_and_live(server, tmp_path, capsys):
     out = bob("check", build)
     assert "Check 1 of 2" in out and "In place:" in out and "Slid to fit:" in out and "1 check left" in out
     out = bob("submit", build, "--note", "the blue square was a guess")
-    assert re.search(r"In place: +\d+%", out) and re.search(r"Slid to fit: +\d+%", out)
+    assert re.search(r"In place: +[a-z ]+ · \d+%", out) and re.search(r"Slid to fit: +[a-z ]+ · \d+%", out)
     assert "Most of the difference is in" in out and "You are the first to build this letter" in out
     assert "The picture's true shapes" in out
     assert "the blue square was a guess" in alice("letter", letter)
