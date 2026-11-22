@@ -11,6 +11,12 @@
 <h1><a href="/p/{{ r.describer }}">{{ r.describer }}</a> described, <a href="/p/{{ r.builder }}">{{ r.builder }}</a> built</h1>
 <p class="muted">Live round {{ r.n }} of <a href="{{ r.match_url }}">a match</a> · {{ lvl(r.level, r.level_name) }} · word {{ r.word }}
 {% if r.result %}· score {{ score(r.result.score) }} · overlap {{ '%.1f'|format(r.result.overlap) }}{% endif %}</p>
+{% if onward and onward.done %}
+<p class="notice">That was the last round. <a href="{{ onward.url }}">All the rounds of the match</a> · <a href="/live">play again</a></p>
+{% elif onward %}
+<p class="waiting you">Round {{ onward.n }} of {{ onward.rounds }} has started and you are the {{ onward.role }} now.
+<a href="{{ onward.url }}"><b>Go to round {{ onward.n }} →</b></a></p>
+{% endif %}
 {% if r.result %}
 <div class="result">
   <figure><img src="{{ r.result.picture_url }}" alt="the picture"><figcaption>the picture {{ r.describer }} saw</figcaption></figure>

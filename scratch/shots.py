@@ -24,7 +24,8 @@ db = sqlite3.connect(args.db)
 one = lambda q, *a: db.execute(q, a).fetchone()[0]
 
 closed = one("SELECT l.id FROM letters l WHERE status='closed' AND (SELECT COUNT(*) FROM builds b WHERE b.letter_id=l.id AND status='submitted')>=3 ORDER BY level DESC LIMIT 1")
-open_ = one("SELECT id FROM letters WHERE status='open' ORDER BY level DESC LIMIT 1")
+_seeded = ",".join(f"'{k}'" for k in keys)
+open_ = one(f"SELECT l.id FROM letters l JOIN players p ON p.id=l.describer_id WHERE l.status='open' AND p.callsign IN ({_seeded}) ORDER BY l.level DESC LIMIT 1")
 building = one("SELECT id FROM builds WHERE status='building' AND letter_id IS NOT NULL LIMIT 1")
 builder = one("SELECT p.callsign FROM builds b JOIN players p ON p.id=b.builder_id WHERE b.id=?", building)
 rnd = one("SELECT id FROM rounds WHERE status='finished' ORDER BY n DESC LIMIT 1")

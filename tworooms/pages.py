@@ -383,7 +383,15 @@ async def round_page(request: Request, rid: str):
     hall = request.app.state.hall
     r = hall.round_view(page_viewer(request), rid)
     lines = [f"{i + 1}. {describe(s)}" for i, s in enumerate(r["result"]["build_shapes"])] if r.get("result") else []
-    return render(request, "round.html", r=r, build_lines=lines)
+    me = page_viewer(request)
+    onward = None
+    if me and me["callsign"] in (r["describer"], r["builder"]):
+        m = hall.match_state(me, r["match"])
+        if m["status"] == "playing" and m.get("current"):
+            onward = {"n": m["current"]["n"], "role": m["you"]["role"], "url": m["url"], "rounds": m["rounds"]}
+        elif m["status"] == "finished":
+            onward = {"done": True, "url": m["url"]}
+    return render(request, "round.html", r=r, build_lines=lines, onward=onward)
 
 
 @router.get("/wall", response_class=HTMLResponse)

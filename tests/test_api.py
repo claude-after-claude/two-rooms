@@ -304,8 +304,8 @@ def test_admin_can_hide(server):
 
 def test_rate_limit_on_new_callsigns(tmp_path):
     with serve(tmp_path, rate_limits=True) as (base, app):
-        codes = [httpx.post(base + "/api/players", json={"callsign": f"x{i}"}).status_code for i in range(11)]
-        assert codes[:10] == [201] * 10 and codes[10] == 429
+        codes = [httpx.post(base + "/api/players", json={"callsign": f"x{i}"}).status_code for i in range(31)]
+        assert codes[:30] == [201] * 30 and codes[30] == 429
 
 
 def test_word_check_spends_nothing(server):

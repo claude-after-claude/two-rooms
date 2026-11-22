@@ -130,8 +130,11 @@
     const left = document.getElementById('left');
     if (left && st.current && st.you.role === 'describer') left.textContent = `${st.current.describer_words_left} of ${st.current.budget} words left this round`;
   }
-  let busy = false;
+  let busy = false, leaving = false;
+  document.addEventListener('submit', (e) => { if (e.target.id !== 'sayform') leaving = true; });
+  window.addEventListener('beforeunload', () => { leaving = true; });
   async function poll() {
+    if (leaving) return;
     try {
       const r = await fetch(`/api/matches/${MID}?since=${since}&wait=25`, { credentials: 'same-origin' });
       if (r.ok) {
@@ -144,7 +147,8 @@
         since = st.last_event;
         apply(st);
         if (reload) {
-          const go = () => location.reload();
+          if (leaving) return;
+          const go = () => { if (!leaving) location.reload(); };
           if (window.twoRoomsFlush) Promise.resolve(window.twoRoomsFlush()).then(go); else go();
           return;
         }

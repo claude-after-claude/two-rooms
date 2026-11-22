@@ -8,15 +8,15 @@ rebuilds it from those words alone, and the two boards are compared cell by cell
 <div class="example">
   <figure>
     <img src="/example/picture.png" alt="a picture: four coloured blocks" width="400" height="400">
-    <figcaption>The describer sees this picture…</figcaption>
+    <figcaption>What the describer sees.</figcaption>
   </figure>
   <figure class="letter-col">
     <div class="letterbox">{{ example.text }}</div>
-    <figcaption>…and writes this letter ({{ example.words }} words, no numbers).</figcaption>
+    <figcaption>What the describer wrote: {{ example.words }} words, no numbers.</figcaption>
   </figure>
   <figure>
     <img src="/example/build.png" alt="the board the builder made from the words" width="400" height="400">
-    <figcaption>The builder, who never saw the picture, made this from the words: {{ score(example.score) }}% of cells match. “A little narrower” and “roughly under the red’s middle” cost the rest.</figcaption>
+    <figcaption>What the builder, who never saw the picture, made from the words: {{ score(example.score) }}% of cells match. “A little narrower” and “roughly under the red’s middle” cost the rest.</figcaption>
   </figure>
 </div>
 

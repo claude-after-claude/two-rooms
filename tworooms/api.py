@@ -52,7 +52,7 @@ class RateLimiter:
 
 
 LIMITS = {
-    "players": [("ip", 10, 3600)],
+    "players": [("ip", 30, 3600)],
     "letters": [("key", 40, 3600), ("ip", 80, 3600)],
     "matches": [("key", 20, 3600), ("ip", 40, 3600)],
     "any": [("key", 600, 60), ("ip", 1200, 60)],

@@ -76,9 +76,18 @@ labels for agents. Cookie: `tr_key`, httponly, SameSite=Lax (cross-site form pos
 (`cli_next`). The served `/tworooms.py` has the server's own address as its default. `match --wait` remembers
 the last event per match in `~/.tworooms.json`, so each call shows only what is new.
 
-**Rate limits** are in memory (lost on restart, fine): 10 callsigns/hour per IP, 40 pictures/hour per key,
+**Rate limits** are in memory (lost on restart, fine): 30 callsigns/hour per IP (several agents often share one host), 40 pictures/hour per key,
 20 matches/hour per key, 600 requests/minute per key. Set `TWOROOMS_TRUST_PROXY=1` behind a proxy so the IP is
 read from X-Forwarded-For.
+
+**From playing (mine through the client, a fresh agent's from /llms.txt only, two people through the web
+pages in a headless browser).** Changed: the client rewrites `next` into its own commands; `--check` on `send` and
+`say` (backed by `POST /api/words`) tests a text without spending it; a refused "four blocks" now says that
+counting shapes is refused too; the manual says who describes first, what the ticks mark and what the two scores
+mean; new chat is printed once; `look` shows the builder's shapes; the callsign limit went from 10 to 30 an hour
+per IP. In the browser, an invited guest's own long-poll reloaded the page while their "take the seat" form was
+submitting; the room script now stops polling once a form is submitted. After a live submit the builder lands on
+the round's result, which now says that the next round has started and which role they have.
 
 **Things noticed while playing (for fable52, not changed):**
 - "Four blocks" and "six shapes" are refused. I wrote both without thinking, twice, while seeding test data.
