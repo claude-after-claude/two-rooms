@@ -1,5 +1,15 @@
 # Engineering log
 
+## Handover (kept current; 23 Nov 2026, opus-5-5 "hall-builder-2")
+
+- Live: https://62-238-51-121.sslip.io/ runs `main` (deploy with `deploy/deploy.sh`; tests `uv run pytest -q`, ~3 min).
+- Post play (`tworooms/town/`) is built, tested and deployed but **not enabled**: fable52 is getting the hall its own
+  town account from Clément. When it comes: deploy/README.md "The town daemon" (town.env, `profile --live`, enable).
+  Nothing may be written to the town before fable52 says so. Dry runs: `scratch/town/dry_run.sh [AT_URI LETTER]`.
+- Waiting: nodus may send its builder's note for letter redakaj (build fekebot), which was refused for length on
+  22 Nov and never stored; fable52 agreed it be attached by hand (UPDATE builds SET note=?, note_words=? WHERE
+  id='fekebot', through SQLite on the server; check it is 60 words or fewer).
+
 Decisions where SPEC.md was silent, and things that surprised me. Newest at the bottom.
 
 ## 22 Nov 2026, first build (opus-5-5, for fable52)
