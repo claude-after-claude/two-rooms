@@ -148,7 +148,8 @@ def test_a_letter_is_posted_and_built_by_post(world):
     d.tick()
     post = town.sent[0]
     t = post["record"]["text"]
-    assert "Level 1, two blocks" in t and "Two blocks: a red one low" in t and "rect COLOUR X Y W H" in t
+    assert "Level 1, two blocks" in t and "Two blocks: a red one low" in t and "rect red 2 1 3 2 is x, y, width" in t
+    assert t.index("Two blocks: a red one low") < t.index("Reply with your board") and len(t) < 600
     assert f"https://hall.example/letter/{lid}" in t and t.endswith(SIGN)
 
     pic = truth(app, lid)
@@ -156,19 +157,20 @@ def test_a_letter_is_posted_and_built_by_post(world):
     r1 = town.say("tater.delve.town", board(moved), post)
     d.tick()
     a1 = town.replies_to(r1)
-    assert len(a1) == 1 and a1[0]["record"]["text"].startswith("Check 1 of 2, your board of 2 shapes: ")
-    assert "slid to fit; it would fit best moved" in a1[0]["record"]["text"] and "In place: of the cells" in a1[0]["record"]["text"]
+    assert len(a1) == 1 and a1[0]["record"]["text"].startswith("Check 1 of 2, your board of 2 shapes. In place: ")
+    assert "). It would fit best moved" in a1[0]["record"]["text"] and "In place: of the cells" in a1[0]["record"]["text"]
     assert a1[0]["record"]["reply"]["root"]["uri"] == post["uri"]
 
     r2 = town.say("tater.delve.town", board(pic), a1[0])
     d.tick()
     a2 = town.replies_to(r2)[0]["record"]["text"]
-    assert a2.startswith("Check 2 of 2") and "nearly exact · 100% in place" in a2 and "No checks left" in a2
+    assert a2.startswith("Check 2 of 2") and "In place: 100% (nearly exact). Slid to fit: 100% (nearly exact)." in a2
+    assert "No checks left" in a2 and "In place: of the cells" not in a2, "the readings are explained once"
 
     r3 = town.say("tater.delve.town", board(pic) + "\nnote: 'high on the right' was enough", town.replies_to(r2)[0])
     d.tick()
     a3 = town.replies_to(r3)[0]["record"]["text"]
-    assert a3.startswith("Your build is in, 2 shapes: nearly exact · 100% in place") and "shown when this letter closes" in a3
+    assert a3.startswith("Your build is in, 2 shapes. In place: 100% (nearly exact).") and "shown when this letter closes" in a3
 
     view = Client(base, "admin-secret").get(f"/api/letters/{lid}")
     res = view["results"][0]
@@ -292,9 +294,9 @@ def test_a_letter_built_in_the_hall_closes_in_the_town(world):
     d.tick()
     closing = [p for p in town.sent if p["embed"]][0]
     text = closing["record"]["text"]
-    assert text.startswith("Closed (5 builds).") and "tater.delve.town: nearly exact · 100% in place" in text
-    assert "b1 (in the hall): nearly exact" in text
-    assert "tater.delve.town, nearly exact · 100% in place and nearly exact · 100% slid to fit" in closing["embed"]["alt"]
+    assert text.startswith("Closed (5 builds).") and "tater.delve.town: in place 100% (nearly exact)" in text
+    assert "b1 (in the hall): in place 100%" in text
+    assert "tater.delve.town, in place 100% (nearly exact), slid to fit 100% (nearly exact)" in closing["embed"]["alt"]
 
 
 def test_only_the_admin_registers_town_players(world):
@@ -315,14 +317,13 @@ def test_a_checked_board_counts_when_the_letter_closes(world):
     lid = letter(base, Client.new(base, "alice"))
     d.tick()
     post = town.sent[0]
-    assert "if the letter closes first, your last board is" in post["record"]["text"]
     r = town.say("tater.delve.town", board(truth(app, lid)), post)
     d.tick()
     assert town.replies_to(r)[0]["record"]["text"].startswith("Check 1 of 2")
     clock.t += 49 * 3600
     d.tick()
     closing = [p for p in town.sent if p["embed"]][0]["record"]["text"]
-    assert "tater.delve.town (last board checked): nearly exact · 100% in place" in closing
+    assert "tater.delve.town (last board checked): in place 100% (nearly exact), slid to fit 100% (nearly exact)" in closing
     v = Client(base, "admin-secret").get(f"/api/letters/{lid}")
     assert v["status"] == "closed" and v["results"][0]["builder"] == "tater.delve.town"
 

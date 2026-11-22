@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ..game import plural, said
+from ..game import plural, reading_word
 from .clients import HallError, TownError, web_url
 from .parse import FORMAT, parse_reply
 
@@ -24,12 +24,25 @@ EXPLAIN = ("In place: of the cells painted on either board, the share painted th
 FORMAT_LEAD = "To build this letter, reply under it with your board, one shape per line:"
 BOARD = "board 10 by 10, x from the left, y from the bottom, later lines on top; red, blue, yellow, green or black"
 
+
+def pct(v) -> str:
+    return f"{round(v)}% ({reading_word(v)})"
+
+
+def readings(ip, sl) -> str:
+    """'In place: 24% (elsewhere). Slid to fit: 34% (recognisable).'"""
+    return f"In place: {pct(ip)}. Slid to fit: {pct(sl)}."
+
+
+def readings_inline(ip, sl) -> str:
+    return f"in place {pct(ip)}, slid to fit {pct(sl)}"
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS letters (
     letter TEXT PRIMARY KEY, uri TEXT NOT NULL, cid TEXT NOT NULL, posted REAL NOT NULL, status TEXT NOT NULL,
     level INTEGER, closed REAL, close_reason TEXT, close_uri TEXT);
 CREATE TABLE IF NOT EXISTS players (did TEXT PRIMARY KEY, handle TEXT NOT NULL, callsign TEXT NOT NULL, key TEXT NOT NULL,
-    created REAL NOT NULL);
+    created REAL NOT NULL, explained INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS builds (letter TEXT NOT NULL, did TEXT NOT NULL, build TEXT NOT NULL,
     checks INTEGER NOT NULL DEFAULT 0, submitted INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (letter, did));
 CREATE TABLE IF NOT EXISTS seen (uri TEXT PRIMARY KEY, letter TEXT, did TEXT, handle TEXT, created TEXT, text TEXT,
@@ -153,7 +166,7 @@ class Daemon:
         for p in fresh:
             by_author.setdefault(p["author"]["did"], []).append(p)
         for did, ps in by_author.items():
-            lines, last = [], None
+            lines, last, gave_readings = [], None, False
             try:
                 for p in ps:
                     line, outcome = self.consider(L, p, mine)
@@ -166,9 +179,13 @@ class Daemon:
                     if line:
                         lines.append(line)
                         last = p
+                        gave_readings |= outcome.startswith("check") or outcome == "submitted"
             finally:
                 if len(lines) > 1:           # the format line is for someone who hasn't sent a board yet
                     lines = [x for x in lines if not x.startswith(FORMAT_LEAD)]
+                if gave_readings and not self.one("SELECT 1 FROM players WHERE did=? AND explained=1", did):
+                    lines.append(EXPLAIN)    # the first readings a builder gets from the hall say what they mean
+                    self.db.execute("UPDATE players SET explained=1 WHERE did=?", (did,))
                 if lines:         # one answer per person per tick, under their latest post: never two in a row
                     self.queue(L, last, "\n\n".join(lines))
 
@@ -192,7 +209,7 @@ class Daemon:
             return self.build(L, p, r)
         if r.errors:
             return (f"I couldn't read that as a board: {'; '.join(r.errors)}. Nothing was placed or checked; reply with "
-                    f"the whole board again, one shape per line: {FORMAT}."), "unreadable"
+                    f"the whole board again, one shape per line: {FORMAT} ({BOARD})."), "unreadable"
         if mention:
             if self.one("SELECT 1 FROM seen WHERE letter=? AND did=? AND outcome='format given'", L["letter"],
                         p["author"]["did"]):
@@ -237,19 +254,18 @@ class Daemon:
             if r.final or b["checks"] >= MAX_CHECKS:
                 res = self.hall.submit(key, b["build"], r.note)["result"]
                 self.db.execute("UPDATE builds SET submitted=1 WHERE letter=? AND did=?", (L["letter"], did))
-                return (f"Your build is in, {n}: {said(res['in_place'])} in place, {said(res['slid_to_fit'])} slid to "
-                        "fit. The picture is shown when this letter closes."
-                        + (" Your note goes to the describer." if r.note else "")), "submitted"
+                return (f"Your build is in, {n}. {readings(res['in_place'], res['slid_to_fit'])} The picture is shown "
+                        "when this letter closes." + (" Your note goes to the describer." if r.note else "")), "submitted"
             c = self.hall.check(key, b["build"])
             self.db.execute("UPDATE builds SET checks=? WHERE letter=? AND did=?", (c["check"], L["letter"], did))
             hint = ("A high slid to fit beside a low in place means the right things in the wrong place. "
                     if c["slid_to_fit"] - c["in_place"] >= 20 else "")
             nxt = ("One check left: reply with the whole board again, or add the word final to make it your build."
                    if c["checks_left"] else "No checks left: the next board you reply with is your build.")
-            return (f"Check {c['check']} of {MAX_CHECKS}, your board of {n}: {said(c['in_place'])} in place, "
-                    f"{said(c['slid_to_fit'])} slid to fit; {c['direction']}. {hint}{nxt}"
-                    + (" A note goes with the reply that makes your build." if r.note else "")
-                    + (f"\n\n{EXPLAIN}" if c["check"] == 1 else "")), f"check {c['check']}"
+            direction = c["direction"][0].upper() + c["direction"][1:]
+            return (f"Check {c['check']} of {MAX_CHECKS}, your board of {n}. {readings(c['in_place'], c['slid_to_fit'])} "
+                    f"{direction}. {hint}{nxt}"
+                    + (" A note goes with the reply that makes your build." if r.note else "")), f"check {c['check']}"
         except HallError as e:
             if e.status == 0 or e.status >= 500:
                 raise HallDown(e.message)
@@ -305,12 +321,12 @@ class Daemon:
     def letter_text(self, c: dict) -> list[str]:
         head = (f"A letter to build, by reply. Level {c['level']}, {c['level_name']}: {c['describer']} saw a picture "
                 f"in the hall and wrote this, in {plural(c['words'], 'word')}.")
-        board = BOARD.replace("board 10 by 10", "board 10 by 10, a tick on the frame at every unit") \
-            if c["level"] <= 2 else BOARD                  # levels 1 and 2 have ticks, and letters count them
-        tail = (f"Reply with your board, one shape per line: {FORMAT} ({board}).\n"
-                "Your first two boards are checks and get two readings back; the third, or any reply with the word "
-                "final, is your build (if the letter closes first, your last board is), and words after \"note:\" go "
-                f"to the describer. Open for two days or until five have built.\n{self.cfg.public}/letter/{c['letter']}\n\n{SIGN}")
+        ticks = " (a tick is one unit)" if c["level"] <= 2 else ""   # levels 1 and 2 have ticks, and letters count them
+        oval = ", ellipse blue 5 5 2 1 is centre, half-width, half-height" if c["level"] >= 4 else ""
+        tail = (f"Reply with your board on a 10 by 10 grid from the bottom left{ticks}, one shape per line: rect red 2 1 "
+                f"3 2 is x, y, width, height{oval}. Your first two replies are checks; the third, or one saying final, "
+                "is your build. Open for two days or until five have built.\n"
+                f"{self.cfg.public}/letter/{c['letter']}\n\n{SIGN}")
         whole = f"{head}\n\n{c['text']}\n\n{tail}"
         if len(whole) <= self.cfg.max_post_chars:
             return [whole]
@@ -391,12 +407,12 @@ class Daemon:
     def closing(self, L, h, why) -> tuple[str, str]:
         builds = [(self.name(L, r["builder"]), r) for r in h.get("results", [])]
         picture = "; ".join(h.get("picture_words", []))
-        lines = [f"{who}: {said(r['in_place'])} in place, {said(r['slid_to_fit'])} slid to fit" for who, r in builds]
+        lines = [f"{who}: {readings_inline(r['in_place'], r['slid_to_fit'])}" for who, r in builds]
         text = (f"Closed ({why}). The picture was {picture}.\n\n"
                 + ("\n".join(lines) if lines else "Nobody built it.")
                 + f"\n\nEvery board, the builders' notes and where each differs: {self.cfg.public}/letter/{L['letter']}"
                 + f"\n\n{SIGN}")
         alt = (f"The picture of this letter and every build of it, side by side. The picture: {picture}. "
-               + ("Builds: " + "; ".join(f"{who}, {said(r['in_place'])} in place and {said(r['slid_to_fit'])} "
-                                         "slid to fit" for who, r in builds) + "." if builds else "Nobody built it."))
+               + ("Builds: " + "; ".join(f"{who}, {readings_inline(r['in_place'], r['slid_to_fit'])}"
+                                         for who, r in builds) + "." if builds else "Nobody built it."))
         return text, alt

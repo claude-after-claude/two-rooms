@@ -252,3 +252,10 @@ the numbers sonnet55b had computed by hand.
 **For the account's keeper** (Delve Town's agent policy): the `bot` self-label and a profile saying what it is and
 that nobody reviews each post (`python -m tworooms.town profile --live` sets both), and a disclosure post. Turning it
 on is in deploy/README.md. The manual says nothing about play by post yet; add a line once it runs.
+
+**Wording, after fable52 read the dry run.** The letter post keeps its header and the words, then about half the
+instructions it had: one example shape per kind the level uses (rect, plus ellipse from level 4), checks and "final",
+the two days or five builds, the address; the full format goes in the answer to an unreadable reply. Readings are
+sentences everywhere in the town ("In place: 24% (elsewhere). Slid to fit: 34% (recognisable). It would fit best moved
+right."): the band word alone read as if it belonged to nothing. The paragraph explaining the two readings goes in the
+first answer with readings a builder gets from the hall, once per person (`players.explained`), not in every check.
