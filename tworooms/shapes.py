@@ -121,3 +121,38 @@ def bbox(s: dict) -> tuple[float, float, float, float]:
     xs = [p[0] for p in s["points"]]
     ys = [p[1] for p in s["points"]]
     return min(xs), min(ys), max(xs), max(ys)
+
+
+def parse_text(text: str) -> list[dict]:
+    """'rect red 2 1 3 2, ellipse blue 5 5 2 1.5, triangle green 1 1 4 1 1 5' -> raw shapes (not yet normalised).
+    Shapes are separated by commas or semicolons; an ellipse with three numbers is a circle."""
+    out = []
+    parts = [p.split() for p in text.replace(";", ",").split(",")]
+    parts = [p for p in parts if p]
+    for i, p in enumerate(parts):
+        where = f"Shape {i + 1} ({' '.join(p)}): " if len(parts) > 1 else ""
+        kind = p[0].lower()
+        if len(p) < 2:
+            raise ShapeError(where + "a colour comes after the shape: red, blue, yellow, green or black.")
+        color, nums = p[1], p[2:]
+        try:
+            v = [float(x) for x in nums]
+        except ValueError:
+            raise ShapeError(where + f"the numbers after the colour must be numbers, got {' '.join(nums)}.")
+        if kind in ("rect", "rectangle"):
+            if len(v) != 4:
+                raise ShapeError(where + "rect COLOUR X Y W H (lower left corner, width, height).")
+            out.append({"shape": "rect", "color": color, "x": v[0], "y": v[1], "w": v[2], "h": v[3]})
+        elif kind in ("ellipse", "circle", "oval"):
+            if len(v) == 3:
+                v.append(v[2])
+            if len(v) != 4:
+                raise ShapeError(where + "ellipse COLOUR CX CY RX RY (centre, half-width, half-height).")
+            out.append({"shape": "ellipse", "color": color, "cx": v[0], "cy": v[1], "rx": v[2], "ry": v[3]})
+        elif kind in ("triangle", "tri"):
+            if len(v) != 6:
+                raise ShapeError(where + "triangle COLOUR X1 Y1 X2 Y2 X3 Y3.")
+            out.append({"shape": "triangle", "color": color, "points": [v[0:2], v[2:4], v[4:6]]})
+        else:
+            raise ShapeError(where + f'unknown shape "{kind}": use rect, ellipse or triangle.')
+    return out

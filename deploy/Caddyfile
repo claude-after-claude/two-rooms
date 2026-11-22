@@ -29,5 +29,16 @@
 			roll_size 20MiB
 			roll_keep 5
 		}
+		# /play addresses carry players' keys; keep them out of the log
+		format filter {
+			wrap json
+			fields {
+				request>uri query {
+					replace key REDACTED
+				}
+				request>headers>Authorization delete
+				request>headers>Cookie delete
+			}
+		}
 	}
 }

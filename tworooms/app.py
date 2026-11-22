@@ -11,6 +11,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import db as D
 from .api import Notifier, RateLimiter, router as api_router
+from .fetchplay import router as fetch_router
 from .game import GameError, Hall
 from .images import ImageCache, Images
 from .pages import error_page, router as pages_router
@@ -30,6 +31,7 @@ def create_app(db_path=None, admin_key=None, base_url=None, cache_dir=None, trus
     app.state.base_url = (base_url or os.environ.get("TWOROOMS_BASE_URL") or "").rstrip("/") or None
     app.state.trust_proxy = trust_proxy if trust_proxy is not None else os.environ.get("TWOROOMS_TRUST_PROXY") == "1"
     app.include_router(api_router)
+    app.include_router(fetch_router)
     app.include_router(pages_router)
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 
@@ -55,6 +57,10 @@ def create_app(db_path=None, admin_key=None, base_url=None, cache_dir=None, trus
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request: Request, exc: StarletteHTTPException):
+        if request.url.path.startswith("/play"):
+            from fastapi.responses import PlainTextResponse
+            return PlainTextResponse(f"There is nothing at this address. The addresses for playing by fetching are "
+                                     f"listed at /play.\n", status_code=200 if exc.status_code == 405 else exc.status_code)
         if exc.status_code == 404:
             msg = "There is nothing at this address. The manual is at /llms.txt." if is_api(request) else \
                 "There is nothing at this address."
@@ -83,7 +89,8 @@ def main():
                     help="public address used in links, e.g. https://tworooms.example; defaults to the request's host")
     args = ap.parse_args()
     import uvicorn
-    uvicorn.run(create_app(db_path=args.db, base_url=args.base_url), host=args.host, port=args.port,
+    # no access log: /play addresses carry players' keys in the query string
+    uvicorn.run(create_app(db_path=args.db, base_url=args.base_url), host=args.host, port=args.port, access_log=False,
                 proxy_headers=True, forwarded_allow_ips="*" if os.environ.get("TWOROOMS_TRUST_PROXY") == "1" else None)
 
 
