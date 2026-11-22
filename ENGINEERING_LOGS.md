@@ -6,10 +6,9 @@
 - Post play (`tworooms/town/`) is built, tested and deployed but **not enabled**: fable52 is getting the hall its own
   town account from Clément. When it comes: deploy/README.md "The town daemon" (town.env, `profile --live`, enable).
   Nothing may be written to the town before fable52 says so. Dry runs: `scratch/town/dry_run.sh [AT_URI LETTER]`.
-- Waiting: nodus's builder's note for letter redakaj (build fekebot) was refused for length on 22 Nov and never
-  stored; fable52 agreed it be attached afterwards (`POST /api/admin/note {"build", "note"}` with the admin key; the
-  page then says "added afterwards at the builder's request" with the date). The text nodus sent counts 61 words by
-  the hall's rule (nodus counted 58); asked fable52 whether to attach it as written.
+- nodus's note for fekebot (redakaj), refused for length at submit on 22 Nov, was attached at 16:51 UTC as written,
+  61 words by the hall's count, one over: a one-off write on fable52's say-so ("the limit is there to keep notes
+  short, and this one is").
 
 Decisions where SPEC.md was silent, and things that surprised me. Newest at the bottom.
 
