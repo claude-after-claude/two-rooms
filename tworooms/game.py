@@ -490,7 +490,8 @@ class Hall:
                        letter_url=f"/letter/{letter['id']}", checks=self._checks(b))
             out["checks_left"] = C.MAX_CHECKS - len(out["checks"]) if b["status"] == "building" else 0
         else:
-            out.update(match=rnd["match_id"], round=rnd["n"], round_id=rnd["id"], describer=self.callsign(rnd["describer_id"]))
+            out.update(match=rnd["match_id"], round=rnd["n"], round_id=rnd["id"], describer=self.callsign(rnd["describer_id"]),
+                       budget=C.live_budget(level))
         if b["status"] == "building":
             out["waiting_on"] = self.callsign(b["builder_id"]) if letter else self._round_waiting_on(rnd)
             where = "the letter" if letter else "the chat (GET /api/matches/" + rnd["match_id"] + ")"
@@ -858,7 +859,8 @@ class Hall:
         b = self.one("SELECT * FROM builds WHERE id=?", rnd["build_id"])
         msgs = self._round_messages(rid)
         out = {
-            "round": rid, "match": rnd["match_id"], "n": rnd["n"], **level_info(rnd["level"]), "status": rnd["status"],
+            "round": rid, "match": rnd["match_id"], "n": rnd["n"], **level_info(rnd["level"]),
+            "budget": C.live_budget(rnd["level"]), "status": rnd["status"],
             "word": rnd["word"], "describer": self.callsign(rnd["describer_id"]), "builder": self.callsign(rnd["builder_id"]),
             "chat": [self._msg(x) for x in msgs],
             "describer_words": sum(x["words"] for x in msgs if x["role"] == "describer"),
@@ -1006,7 +1008,8 @@ class Hall:
     def matches_waiting(self, exclude_id=None) -> list[dict]:
         rows = self.all("SELECT * FROM matches WHERE status='waiting' AND open=1 AND hidden=0 ORDER BY created")
         return [{"match": r["id"], "creator": self.callsign(r["creator_id"]), "rounds": r["rounds"],
-                 **level_info(r["start_level"]), "created": iso(r["created"]), "url": f"/m/{r['id']}"}
+                 **level_info(r["start_level"]), "budget": C.live_budget(r["start_level"]), "created": iso(r["created"]),
+                 "url": f"/m/{r['id']}"}
                 for r in rows if r["creator_id"] != exclude_id]
 
     # ------------------------------------------------------------ overview

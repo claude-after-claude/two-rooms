@@ -84,7 +84,7 @@ def loss(picture: list[dict], build: list[dict]) -> dict | None:
         body = f" The picture has {in_words(t)}, and you built nothing like it."
     else:
         body = f" You built {in_words(m)}, and the picture has nothing like it."
-    if len(mine) != len(theirs):
+    if len(mine) != len(theirs) and m is not None and t is not None:
         body += f" The picture has {len(theirs)} {best} shape{'s' if len(theirs) != 1 else ''}; you built {len(mine)}."
     return {"colour": best, "cells": best_n, "cells_differ": total, "sentence": head + body,
             "yours": [in_words(s) for s in mine], "picture": [in_words(s) for s in theirs]}

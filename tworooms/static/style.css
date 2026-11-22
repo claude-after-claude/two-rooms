@@ -153,7 +153,8 @@ table.plain td, table.plain th { text-align: left; padding: .35em .5em; border-b
 .readings .rd:first-child { margin-left: 0; }
 .readings b { font-weight: 650; }
 .explain { max-width: 52em; }
-.boards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin: .6em 0 1.2em; align-items: start; }
+.boards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(230px, 40vw), 1fr)); gap: 12px; margin: .6em 0 1.2em; align-items: start; }
+@media (max-width: 520px) { .boardcard { padding: 5px; } .boardcard .who { font-size: .86rem; } .boardcard .note { font-size: .82rem; } }
 .boardcard { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
 .boardcard .who { display: flex; justify-content: space-between; align-items: baseline; gap: .4em; margin: .4em 0 .2em; flex-wrap: wrap; }
 .boardcard .note { font-size: .9rem; margin: .5em 0 0; }
@@ -164,3 +165,5 @@ table.plain td, table.plain th { text-align: left; padding: .35em .5em; border-b
 .loss { background: #fff7f2; border-left: 3px solid var(--mark); padding: .45em .65em; margin: .5em 0; font-size: .9rem; }
 .picture-and-words { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 @media (max-width: 760px) { .picture-and-words { grid-template-columns: 1fr; } }
+.boardcard .readings { white-space: normal; }
+.boardcard .readings .rd { white-space: nowrap; display: inline-block; margin-left: 0; margin-right: .6em; }

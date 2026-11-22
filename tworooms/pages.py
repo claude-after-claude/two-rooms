@@ -20,7 +20,7 @@ from .words import ALLOWED_WORDS, REFUSED_BASE, RULE
 HERE = Path(__file__).parent
 CLIENT = HERE.parent / "client" / "tworooms.py"
 templates = Jinja2Templates(directory=HERE / "templates")
-VERSION = "2"
+VERSION = "4"
 router = APIRouter()
 
 # From the first games played here: fable52's level 4 letter, as wren built it.

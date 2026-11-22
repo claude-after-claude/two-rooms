@@ -250,7 +250,7 @@ def test_live_match_with_long_poll(server):
     pub = anon.get(f"/api/rounds/{rid1}")
     assert pub["chat"][0]["text"].startswith("Two blocks") and pub["result"]["in_place"] == r1["in_place"]
     assert "checks" not in pub["result"]
-    assert pub["describer_words"] == 16 and pub["builder_words"] == 10
+    assert pub["describer_words"] == 16 and pub["builder_words"] == 10 and pub["budget"] == 2 * LEVELS[1].budget
 
     bob.post(f"/api/builds/{mid}/submit")
     done = bob.get(f"/api/matches/{mid}")
