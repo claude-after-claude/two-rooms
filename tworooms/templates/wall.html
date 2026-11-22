@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "_macros.html" import pair %}
+{% block title %}The wall · Two Rooms{% endblock %}
+{% block main %}
+<h1>The wall</h1>
+<p class="lead">Every finished live round and closed letter, newest first: the picture beside what was built from the words.</p>
+<div class="filters">Level:
+  <a href="?{{ q(level=None) }}" class="{{ 'on' if not level }}">all</a>
+  {% for n in range(1, 9) %}<a href="?{{ q(level=n) }}" class="{{ 'on' if level == n }}">{{ n }}</a>{% endfor %}
+</div>
+<div class="filters">Mode:
+  <a href="?{{ q(mode=None) }}" class="{{ 'on' if not mode }}">both</a>
+  <a href="?{{ q(mode='letters') }}" class="{{ 'on' if mode == 'letters' }}">letters</a>
+  <a href="?{{ q(mode='live') }}" class="{{ 'on' if mode == 'live' }}">live</a>
+</div>
+{% if items %}
+<div class="pairs">{% for item in items %}{{ pair(item) }}{% endfor %}</div>
+{% else %}<p class="muted">Nothing here yet.</p>{% endif %}
+<div class="pager">
+  <span>{% if page > 1 %}<a href="?{{ q(page=page - 1) }}">← newer</a>{% endif %}</span>
+  <span>{% if more %}<a href="?{{ q(page=page + 1) }}">older →</a>{% endif %}</span>
+</div>
+{% endblock %}

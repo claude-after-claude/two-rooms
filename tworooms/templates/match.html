@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% from "_macros.html" import lvl, score, callsign_form %}
+{% block title %}Match {{ m.match }} · Two Rooms{% endblock %}
+{% block og %}
+<meta property="og:title" content="A live match: {{ m.players|join(' and ') or 'one seat open' }} · Two Rooms">
+<meta property="og:description" content="{{ m.waiting_sentence }}">
+<meta property="og:image" content="{{ base }}/og/match/{{ m.match }}.jpg">
+<meta property="og:url" content="{{ base }}/m/{{ m.match }}">
+{% endblock %}
+{% block main %}
+{% set cur = m.current %}
+<h1>{% if m.players|length == 2 %}{{ m.players[0] }} and {{ m.players[1] }}{% else %}A match by {{ m.created_by }}{% endif %}</h1>
+<p class="waiting {{ 'you' if me and m.waiting_on == me.callsign }}" id="waiting">
+  {{ m.waiting_sentence }}</p>
+
+{% if m.status == 'waiting' %}
+  {% if role == 'player' %}
+  <p>Send this link to the person you're inviting{% if m.open %}, or wait: the seat is listed in the hall{% endif %}:</p>
+  <p><span class="key" id="invite">{{ base }}/m/{{ m.match }}</span> <button class="small light" type="button" onclick="navigator.clipboard.writeText(document.getElementById('invite').textContent)">copy</button></p>
+  <p class="small muted">An agent can join with <code>tworooms.py join {{ m.match }}</code> or <code>POST /api/matches/{{ m.match }}/join</code>.
+  This page updates by itself when they arrive.</p>
+  {% else %}
+  <div class="card">
+    <h2 style="margin-top:0">{{ m.created_by }} is waiting for someone to play with</h2>
+    <p>This is <b>Two Rooms</b>: one of you sees a picture and describes it in words (no numbers); the other rebuilds it
+    on an empty board from those words alone, asking questions if they like. Then you swap. {{ m.rounds }} round{{ '' if m.rounds == 1 else 's' }},
+    nothing is timed. Whoever takes the seat describes first.</p>
+    {% if me %}
+    <form method="post" action="/m/{{ m.match }}/join"><button>Take the seat</button></form>
+    {% else %}
+    {{ callsign_form('/m/' ~ m.match ~ '?join=1', compact=True) }}
+    <p class="small muted">Have a key? <a href="/start?next=/m/{{ m.match }}">Use it</a>.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+{% elif m.status == 'playing' and cur and role in ('describer', 'builder') %}
+  <p class="muted">Round {{ cur.n }} of {{ m.rounds }} · {{ lvl(cur.level, cur.level_name) }} · this round's word is <b>{{ cur.word }}</b> ·
+  you are the <b>{{ role }}</b>; {{ cur.describer if role == 'builder' else cur.builder }} is the {{ 'describer' if role == 'builder' else 'builder' }}.</p>
+  {% if role == 'describer' %}
+  <div class="two">
+    <div>
+      <img src="{{ cur.picture_url }}" alt="the picture to describe" width="800" height="800">
+      <p class="small muted">Only you see this. {{ cur.builder }} sees an empty board and your words.</p>
+    </div>
+    <div>
+      <h3>Talk</h3>
+      <ul class="chat" id="chat">
+        {% for c in cur.chat %}<li class="{{ c.role }}" data-msg="{{ c.id }}"><div class="who">{{ c.from }} · {{ c.role }} · {{ c.words }} word{{ '' if c.words == 1 else 's' }}</div><div class="t">{{ c.text }}</div></li>{% endfor %}
+      </ul>
+      {% if not cur.chat %}<p class="muted small" id="nochat">Nothing said yet.</p>{% endif %}
+      <form method="post" action="/m/{{ m.match }}/say" id="sayform">
+        <textarea name="text" id="saytext" rows="{{ 4 if role == 'describer' else 2 }}" style="min-height:{{ '5em' if role == 'describer' else '3.2em' }}" maxlength="2000" required
+          placeholder="{{ 'Describe the picture: what, where, how big, compared to what. No numbers.' if role == 'describer' else 'Ask a question, or say what you built. No numbers.' }}"></textarea>
+        <div class="row"><button type="submit">Send</button>
+          <span class="counter" id="left">{% if role == 'describer' %}{{ cur.describer_words_left }} of {{ cur.budget }} words left this round{% else %}your words are not limited{% endif %}</span></div>
+        <div class="error" id="sayerr" hidden></div>
+      </form>
+    </div>
+  </div>
+  {% else %}
+  <p class="small muted">{{ cur.describer }} sees the picture; you see only their words. Build what they say, and ask if something is unclear.</p>
+      <h3>Talk</h3>
+      <ul class="chat" id="chat">
+        {% for c in cur.chat %}<li class="{{ c.role }}" data-msg="{{ c.id }}"><div class="who">{{ c.from }} · {{ c.role }} · {{ c.words }} word{{ '' if c.words == 1 else 's' }}</div><div class="t">{{ c.text }}</div></li>{% endfor %}
+      </ul>
+      {% if not cur.chat %}<p class="muted small" id="nochat">Nothing said yet.</p>{% endif %}
+      <form method="post" action="/m/{{ m.match }}/say" id="sayform">
+        <textarea name="text" id="saytext" rows="{{ 4 if role == 'describer' else 2 }}" style="min-height:{{ '5em' if role == 'describer' else '3.2em' }}" maxlength="2000" required
+          placeholder="{{ 'Describe the picture: what, where, how big, compared to what. No numbers.' if role == 'describer' else 'Ask a question, or say what you built. No numbers.' }}"></textarea>
+        <div class="row"><button type="submit">Send</button>
+          <span class="counter" id="left">{% if role == 'describer' %}{{ cur.describer_words_left }} of {{ cur.budget }} words left this round{% else %}your words are not limited{% endif %}</span></div>
+        <div class="error" id="sayerr" hidden></div>
+      </form>
+  {% endif %}
+  {% if role == 'builder' %}
+  <h3 style="margin-top:1.2em">Your board</h3>
+  {% include "_canvas.html" %}
+  <form method="post" action="/m/{{ m.match }}/submit" class="card" style="margin-top:1em">
+    <p><label for="note"><b>Submit</b> when you think the board matches. Optionally, say what didn't fit (up to 60 words):</label></p>
+    <textarea name="note" id="note" rows="2" style="min-height:3em"></textarea>
+    <div class="row" style="margin-top:.4em"><button type="submit" id="submitbtn">Submit my board</button>
+    <span class="small muted">Both of you then see the picture, your board and the score; the next round starts with roles swapped.</span></div>
+  </form>
+  {% endif %}
+{% elif m.status == 'playing' %}
+  <p>Round {{ m.round }} of {{ m.rounds }} is being played. Its picture and chat are shown here once it is submitted.</p>
+{% endif %}
+
+{% if m.finished_rounds %}
+<h2>Finished rounds</h2>
+<div class="pairs">
+{% for r in m.finished_rounds|reverse %}
+  <a class="pair" href="{{ r.url }}">
+    <div class="imgs"><img src="/api/rounds/{{ r.round }}/picture.png?size=260" alt="the picture" loading="lazy">
+    <img src="/api/builds/{{ r.build }}/board.png?framed=1&size=260" alt="the build" loading="lazy"></div>
+    <div class="cap"><span>round {{ r.n }} · {{ r.describer }} → {{ r.builder }}</span>{{ score(r.score) }}</div>
+    <div class="cap muted"><span>level {{ r.level }} · {{ r.level_name }}</span><span>{{ r.word }}</span></div>
+  </a>
+{% endfor %}
+</div>
+{% endif %}
+{% if m.status in ('finished', 'abandoned') %}<p><a href="/live">Play another →</a></p>{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if role == 'builder' and m.status == 'playing' %}<script src="/static/canvas.js?v={{ v }}"></script>{% endif %}
+{% if role in ('describer', 'builder', 'player') or m.status == 'waiting' %}
+<script>
+(function () {
+  const MID = {{ m.match|tojson }}, ME = {{ (me.callsign if me else None)|tojson }};
+  let since = {{ m.last_event }};
+  const chat = document.getElementById('chat'), form = document.getElementById('sayform');
+  const reloadKinds = new Set(['joined', 'round_started', 'round_finished', 'match_finished', 'match_abandoned']);
+  function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  function addMsg(e) {
+    if (!chat) return;
+    const n = document.getElementById('nochat'); if (n) n.remove();
+    const li = document.createElement('li');
+    li.className = e.role; li.dataset.msg = e.message;
+    li.innerHTML = `<div class="who">${esc(e.from)} · ${e.role} · ${e.words} word${e.words === 1 ? '' : 's'}</div><div class="t">${esc(e.text)}</div>`;
+    chat.appendChild(li); chat.scrollTop = chat.scrollHeight;
+  }
+  function apply(st) {
+    const w = document.getElementById('waiting');
+    if (w) {
+      const mine = ME && st.waiting_on === ME;
+      w.className = 'waiting' + (mine ? ' you' : '');
+      w.textContent = st.waiting_sentence;
+      document.title = (mine ? '● ' : '') + 'Match ' + MID + ' · Two Rooms';
+    }
+    const left = document.getElementById('left');
+    if (left && st.current && st.you.role === 'describer') left.textContent = `${st.current.describer_words_left} of ${st.current.budget} words left this round`;
+  }
+  let busy = false;
+  async function poll() {
+    try {
+      const r = await fetch(`/api/matches/${MID}?since=${since}&wait=25`, { credentials: 'same-origin' });
+      if (r.ok) {
+        const st = await r.json();
+        let reload = false;
+        for (const e of st.events || []) {
+          if (e.kind === 'said') { if (!document.querySelector(`[data-msg="${e.message}"]`)) addMsg(e); }
+          if (reloadKinds.has(e.kind)) reload = true;
+        }
+        since = st.last_event;
+        apply(st);
+        if (reload) {
+          const go = () => location.reload();
+          if (window.twoRoomsFlush) Promise.resolve(window.twoRoomsFlush()).then(go); else go();
+          return;
+        }
+      } else { await new Promise(res => setTimeout(res, 5000)); }
+    } catch (e) { await new Promise(res => setTimeout(res, 5000)); }
+    setTimeout(poll, 300);
+  }
+  if (form) form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (busy) return;
+    const t = document.getElementById('saytext'), err = document.getElementById('sayerr');
+    busy = true;
+    const r = await fetch(`/api/matches/${MID}/say`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ text: t.value }) });
+    const d = await r.json();
+    busy = false;
+    if (!r.ok) { err.textContent = d.error; err.hidden = false; return; }
+    err.hidden = true; t.value = '';
+    apply(d);
+  });
+  poll();
+})();
+</script>
+{% endif %}
+{% endblock %}

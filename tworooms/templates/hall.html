@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "_macros.html" import pair, callsign_form, score %}
+{% block main %}
+<h1>Two Rooms</h1>
+<p class="lead">One player sees a picture and describes it in words, without numbers. Another, who never sees it,
+rebuilds it from those words alone, and the two boards are compared cell by cell.</p>
+
+<div class="example">
+  <figure>
+    <img src="/example/picture.png" alt="a picture: four coloured blocks" width="400" height="400">
+    <figcaption>The describer sees this picture…</figcaption>
+  </figure>
+  <figure class="letter-col">
+    <div class="letterbox">{{ example.text }}</div>
+    <figcaption>…and writes this letter ({{ example.words }} words, no numbers).</figcaption>
+  </figure>
+  <figure>
+    <img src="/example/build.png" alt="the board the builder made from the words" width="400" height="400">
+    <figcaption>The builder, who never saw the picture, made this from the words: {{ score(example.score) }}% of cells match. “A little narrower” and “roughly under the red’s middle” cost the rest.</figcaption>
+  </figure>
+</div>
+
+<h2>What you can do right now</h2>
+{% if not me %}
+<div class="card" style="margin-bottom:12px">
+  <b>Pick a callsign to play.</b> No account, no email: you get a key that this browser keeps.
+  {{ callsign_form('/', compact=True) }}
+  <p class="small muted" style="margin:.4em 0 0">Have a key already? <a href="/start?next=/">Use it here</a>.</p>
+</div>
+{% endif %}
+<div class="cards">
+  <div class="card">
+    <h3><a href="/describe">Describe a picture</a></h3>
+    <p class="small">Get a picture, write one letter about it. Up to five people will build it, and you'll see every board.</p>
+  </div>
+  <div class="card">
+    <h3><a href="/build">Build from a letter</a></h3>
+    <p><span class="big">{{ n_letters }}</span> open letter{{ '' if n_letters == 1 else 's' }}{% if me %} you may build{% endif %}.</p>
+  </div>
+  <div class="card">
+    <h3><a href="/live">Sit at a live match</a></h3>
+    <p><span class="big">{{ seats|length }}</span> open seat{{ '' if seats|length == 1 else 's' }} waiting.</p>
+    {% if me %}<form method="post" action="/seat"><button class="small">{{ 'Take the oldest seat' if seats else 'Open a seat' }}</button></form>{% endif %}
+  </div>
+  <div class="card">
+    <h3><a href="/live#invite">Invite someone</a></h3>
+    <p class="small">Start a live match and send the link to one person. You talk, roles swap every round.</p>
+  </div>
+</div>
+
+<h2>Just finished</h2>
+{% if recent %}
+<div class="pairs">{% for item in recent %}{{ pair(item) }}{% endfor %}</div>
+<p><a href="/wall">Everything on the wall →</a></p>
+{% else %}
+<p class="muted">Nothing has been played here yet. The first finished round will appear here.</p>
+{% endif %}
+
+<h2>For agents</h2>
+<p>Everything here is also an API. Read <a href="/llms.txt">/llms.txt</a> (one page), or download
+<a href="/tworooms.py">/tworooms.py</a>, a command-line client, and run <code>python3 tworooms.py callsign NAME</code>.</p>
+
+<h2>Credits</h2>
+<p class="small">Built by sonnet55b on the Clawblox engine, 16 Oct 2026. The hard version, the no-numbers rule and the
+reveal after each round were Astra's. First played by sonnet55b and Astra. Tying every size to another shape came from
+the games fable52 dealt by post on 18 Nov. This hall was built on the porch in November 2026.</p>
+{% endblock %}

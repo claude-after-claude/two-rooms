@@ -350,6 +350,7 @@ class Hall:
         return {
             "build": b["id"], "builder": self.callsign(b["builder_id"]), "score": b["score"], "overlap": b["overlap"],
             "passed": b["score"] is not None and b["score"] >= C.PASS_SCORE,
+            "cells_differ": C.CELLS * C.CELLS - compare(self.shapes_of(picture_id), D.loads(b["shapes"]))["cells_right"],
             "board_url": f"/api/builds/{b['id']}/board.png", "diff_url": f"/api/builds/{b['id']}/diff.png",
             "note": b["note"], "shapes": D.loads(b["shapes"]), "submitted": iso(b["submitted"]),
         }
@@ -470,6 +471,7 @@ class Hall:
             "picture_url": f"/api/letters/{letter['id']}/picture.png" if letter else f"/api/rounds/{rnd['id']}/picture.png",
             "board_url": f"/api/builds/{b['id']}/board.png", "diff_url": f"/api/builds/{b['id']}/diff.png",
             "picture_shapes": self.shapes_of(pic_id), "build_shapes": D.loads(b["shapes"]), "note": b["note"],
+            "cells_differ": C.CELLS * C.CELLS - compare(self.shapes_of(pic_id), D.loads(b["shapes"]))["cells_right"],
             "page_url": f"/letter/{letter['id']}" if letter else f"/round/{rnd['id']}",
         }
         res["picture_lines"] = [f"{i + 1}. {describe(s)}" for i, s in enumerate(res["picture_shapes"])]
@@ -775,7 +777,7 @@ class Hall:
         self.sweep()
         m = self.match(mid)
         me_id = viewer["id"] if viewer not in (None, "admin") else None
-        is_player = me_id in (m["creator_id"], m["guest_id"])
+        is_player = me_id is not None and me_id in (m["creator_id"], m["guest_id"])
         if m["hidden"] and not (is_player or self.is_admin(viewer)):
             raise GameError(404, f'There is no match "{mid}".')
         rnd = self._current_round(m)
@@ -789,6 +791,7 @@ class Hall:
                 "round": r["id"], "n": r["n"], **level_info(r["level"]), "word": r["word"],
                 "describer": self.callsign(r["describer_id"]), "builder": self.callsign(r["builder_id"]),
                 "score": self.one("SELECT score FROM builds WHERE id=?", r["build_id"])["score"], "url": f"/round/{r['id']}",
+                "build": r["build_id"],
             } for r in rounds_done if not r["hidden"] or is_player],
         }
         role = None
@@ -830,7 +833,21 @@ class Hall:
         out["last_event"] = last
         out["next"] = self._match_next(m, rnd, role, is_player, waiting_on, viewer)
         out["waiting_sentence"] = self._waiting_sentence(m, rnd, waiting_on)
+        if waiting_on and me_id and waiting_on == viewer["callsign"]:
+            out["waiting_sentence"] = self._your_move(rnd, role)
         return out
+
+    def _your_move(self, rnd, role) -> str:
+        msgs = self._round_messages(rnd["id"])
+        other = self.callsign(rnd["builder_id"] if role == "describer" else rnd["describer_id"])
+        if role == "describer":
+            if not msgs:
+                return f"Your move: describe the picture to {other}."
+            return f"Your move: {other} asked something; answer it."
+        board = self.one("SELECT * FROM builds WHERE id=?", rnd["build_id"])
+        if D.loads(board["shapes"]) and max([board["updated"]] + [x["created"] for x in msgs]) < D.now() - C.STALE_BOARD_HOURS * 3600:
+            return "Your move: nothing has moved for a day; submit your board when you're ready."
+        return f"Your move: build from {other}'s words, ask a question, or submit."
 
     def _waiting_sentence(self, m, rnd, waiting_on) -> str:
         if m["status"] == "waiting":

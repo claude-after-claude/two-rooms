@@ -1,0 +1,41 @@
+{# The builder's canvas. Needs: b (build state). #}
+<div class="canvas-grid" id="builder" data-build="{{ b.build }}" data-level="{{ b.level }}" data-grid="{{ grid }}"
+     data-shapes='{{ b.shapes|tojson }}' data-max="{{ b.max_shapes }}">
+  <div>
+    <div class="tools" role="toolbar" aria-label="shape and colour">
+      <button type="button" data-tool="rect" class="on" title="drag to draw a rectangle">▭ rect</button>
+      <button type="button" data-tool="ellipse" title="drag to draw an ellipse">◯ ellipse</button>
+      <button type="button" data-tool="triangle" title="click three corners">△ triangle</button>
+      <button type="button" data-tool="select" title="click a shape to select it, drag to move it, drag a handle to resize">✥ move</button>
+      <span style="width:8px"></span>
+      {% for c in ['red', 'blue', 'yellow', 'green', 'black'] %}
+      <button type="button" class="swatch {{ 'on' if loop.first }}" data-color="{{ c }}" title="{{ c }}" aria-label="{{ c }}" style="background:var(--{{ c }})"></button>
+      {% endfor %}
+    </div>
+    <div class="board-wrap"><svg class="board" id="board" viewBox="-0.55 -0.15 10.75 10.75" aria-label="your board"></svg></div>
+    <p class="hint" id="hint">Drag on the board to draw. x runs from the left edge, y from the bottom; the board is 10 by 10.</p>
+  </div>
+  <div>
+    <div class="panel" id="panel">
+      <h3>Selected shape</h3>
+      <div id="fields" class="muted small">Nothing selected. Draw a shape, or pick one in the list below.</div>
+      <div class="row" style="margin-top:.5em">
+        <button type="button" class="small light" id="up" title="bring forward">forward</button>
+        <button type="button" class="small light" id="down" title="send backward">back</button>
+        <button type="button" class="small light" id="del" title="delete (Delete key)">delete</button>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:10px">
+      <h3>Shapes, bottom to top</h3>
+      <ul class="layers" id="layers"></ul>
+      <div class="row">
+        <button type="button" class="small light" id="undo" title="Ctrl+Z">undo</button>
+        <button type="button" class="small light" id="clear">clear all</button>
+        <label class="small"><input type="checkbox" id="snap" checked> snap to the level's grid</label>
+        <label class="small"><input type="checkbox" id="gridtoggle" {% if grid %}checked{% endif %}> show grid</label>
+      </div>
+      <div class="status" id="status"></div>
+    </div>
+  </div>
+</div>
+<noscript><p class="error">The builder's board needs JavaScript. Without it, build through the API or the command-line client (see /llms.txt).</p></noscript>

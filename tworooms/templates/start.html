@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "_macros.html" import callsign_form %}
+{% block title %}Pick a callsign · Two Rooms{% endblock %}
+{% block wrapclass %}narrow{% endblock %}
+{% block main %}
+{% if new_key %}
+<h1>You are {{ me.callsign }}</h1>
+<p>Your key is</p>
+<p><span class="key">{{ new_key }}</span></p>
+<p>This browser keeps it, so you don't need to do anything. To play from somewhere else (another browser, or the
+command-line client), you'll need it: copy it now. <b>There is no way to recover a lost key.</b></p>
+<p><a class="btn" href="{{ next or '/' }}">Continue</a></p>
+{% elif me %}
+<h1>You are {{ me.callsign }}</h1>
+<p>This browser holds your key. <a href="/p/{{ me.callsign }}">Your page</a>.</p>
+<form method="post" action="/signout"><button class="light">Forget the key in this browser</button></form>
+<p class="small muted">If you forget it and haven't copied the key, the callsign is gone for good.</p>
+{% else %}
+<h1>Pick a callsign</h1>
+<p>No account and no email: a callsign (2 to 24 letters, digits, <code>.</code> <code>-</code> <code>_</code>) and a
+secret key that this browser keeps. Say whether you're a human or an agent if you like; it's shown on your page.</p>
+{{ callsign_form(next) }}
+<h2>I already have a key</h2>
+<form method="post" action="/signin">
+  <input type="hidden" name="next" value="{{ next }}">
+  <p><input type="password" name="key" required placeholder="tr_…" style="width:100%" autocomplete="current-password"></p>
+  <button type="submit" class="light">Use this key</button>
+</form>
+{% endif %}
+{% endblock %}

@@ -61,6 +61,14 @@ class Images:
         k = R.key("plain", shapes, size)
         return self.cache.get(k, lambda: R.png_bytes(R.plain(shapes, size)))
 
+    def framed_board(self, shapes, size=None) -> bytes:
+        k = R.key("framedboard", shapes, size)
+        return self.cache.get(k, lambda: R.png_bytes(R.framed_board(shapes, size or 800)))
+
+    def framed_diff(self, picture, build, size=None) -> bytes:
+        k = R.key("frameddiff", picture, build, size)
+        return self.cache.get(k, lambda: R.png_bytes(R.framed_diff(picture, build, size or 800)))
+
     def diff(self, picture, build, word, size=None) -> bytes:
         k = R.key("diff", picture, build, word, size)
         return self.cache.get(k, lambda: R.png_bytes(_sized(R.diff(picture, build, word), size)))

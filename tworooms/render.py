@@ -272,17 +272,38 @@ def board(shapes: list[dict], word: str = "", grid: bool = False, labels: bool =
     return _board_frame(inner, title, right, labels=labels, grid=grid, empty_text=empty)
 
 
-def diff(picture: list[dict], build: list[dict], word: str = "", side: int = 720) -> Image.Image:
-    """The picture washed out, with every cell where the build differs marked."""
+def _diff_inner(picture, build, side):
     inner = _draw_crisp(picture, side, alpha_mix=0.6)
     mask = diff_mask(picture, build)
     arr = np.asarray(inner, np.float32)
-    cell = side / CELLS
-    big = np.kron(mask[::-1, :].astype(np.float32), np.ones((1, 1)))
-    m_img = Image.fromarray((big * 255).astype(np.uint8), "L").resize((side, side), Image.NEAREST)
+    m_img = Image.fromarray((mask[::-1, :] * 255).astype(np.uint8), "L").resize((side, side), Image.NEAREST)
     m = np.asarray(m_img, np.float32)[..., None] / 255
     arr = arr * (1 - 0.78 * m) + np.array(MARK, np.float32) * 0.78 * m
-    inner = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGB")
+    return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGB"), mask
+
+
+LIGHT_FRAME = (208, 200, 186)
+
+
+def framed(inner: Image.Image, size: int, colour=LIGHT_FRAME) -> Image.Image:
+    """A board in the same frame geometry as the painted picture, so the two line up side by side."""
+    frame = round(size * 0.05)
+    out = Image.new("RGB", (size, size), colour)
+    out.paste(inner.resize((size - 2 * frame, size - 2 * frame), Image.LANCZOS), (frame, frame))
+    return out
+
+
+def framed_board(shapes: list[dict], size: int = 800) -> Image.Image:
+    return framed(_draw_crisp(shapes, size - 2 * round(size * 0.05)), size)
+
+
+def framed_diff(picture: list[dict], build: list[dict], size: int = 800) -> Image.Image:
+    return framed(_diff_inner(picture, build, size - 2 * round(size * 0.05))[0], size)
+
+
+def diff(picture: list[dict], build: list[dict], word: str = "", side: int = 720) -> Image.Image:
+    """The picture washed out, with every cell where the build differs marked."""
+    inner, mask = _diff_inner(picture, build, side)
     n = int(mask.sum())
     title = f"{word.upper()} · where they differ" if word else "where they differ"
     return _board_frame(inner, title, f"{n} of {CELLS * CELLS} cells differ", labels=True, grid=False)
@@ -307,7 +328,7 @@ def og_pair(picture_img: Image.Image, build: list[dict] | None, caption: str, su
         out.paste(p, ((W - side) // 2, top))
     else:
         out.paste(p, (W // 2 - side - 25, top))
-        b = plain(build, side)
+        b = framed_board(build, side)
         out.paste(b, (W // 2 + 25, top))
         f = font("DejaVuSans.ttf", 18)
         d.text((W // 2 - side // 2 - 25, top + side + 18), "the picture", font=f, fill=(110, 104, 96), anchor="mt")

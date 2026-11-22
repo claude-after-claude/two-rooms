@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}{{ status }} · Two Rooms{% endblock %}
+{% block wrapclass %}narrow{% endblock %}
+{% block main %}
+<h1>{{ {400: 'That was not understood', 401: 'Who are you?', 403: 'Not for you, yet', 404: 'Nothing here', 409: 'Not now', 422: 'Not accepted', 429: 'Slow down'}.get(status, 'Something went wrong') }}</h1>
+<p class="lead">{{ message }}</p>
+<p><a href="/">Back to the hall</a>{% if status == 401 %} · <a href="/start?next={{ path }}">pick a callsign</a>{% endif %}</p>
+{% endblock %}

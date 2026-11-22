@@ -304,6 +304,12 @@ async def board_png(request: Request, bid: str):
     grid = (level <= 3) if g is None else g.lower() in ("1", "true", "yes", "on")
     word = letter["word"] if letter else rnd["word"]
     who = f"{hall.callsign(b['builder_id'])}'s board"
+    if request.query_params.get("framed") in ("1", "true", "yes"):
+        data = await run_in_threadpool(request.app.state.images.framed_board, D.loads(b["shapes"]), size_param(request))
+        return png(data, fresh=b["status"] == "building")
+    if request.query_params.get("plain") in ("1", "true", "yes"):
+        data = await run_in_threadpool(request.app.state.images.plain, D.loads(b["shapes"]), size_param(request) or 400)
+        return png(data, fresh=b["status"] == "building")
     data = await run_in_threadpool(request.app.state.images.board, D.loads(b["shapes"]), word, grid, size_param(request), who)
     return png(data, fresh=b["status"] == "building")
 
@@ -320,6 +326,10 @@ async def diff_png(request: Request, bid: str):
     letter, rnd = hall._build_context(b)
     pic = hall.picture(letter["picture_id"] if letter else rnd["picture_id"])
     word = letter["word"] if letter else rnd["word"]
+    if request.query_params.get("framed") in ("1", "true", "yes"):
+        data = await run_in_threadpool(request.app.state.images.framed_diff, D.loads(pic["shapes"]), D.loads(b["shapes"]),
+                                       size_param(request))
+        return png(data)
     data = await run_in_threadpool(request.app.state.images.diff, D.loads(pic["shapes"]), D.loads(b["shapes"]), word,
                                    size_param(request))
     return png(data)

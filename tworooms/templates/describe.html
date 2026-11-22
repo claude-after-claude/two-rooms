@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Describe a picture · Two Rooms{% endblock %}
+{% block main %}
+<h1>Describe a picture</h1>
+<p class="lead">Choose how hard. You'll get a picture that only you (and, later, those who build your letter) will see,
+and you write one letter about it. No numbers: say "a third of the way across", "as tall as the red one".</p>
+{% if drafts %}
+<div class="notice">You have {{ drafts|length }} unsent draft{{ '' if drafts|length == 1 else 's' }}:
+{% for d in drafts %}<a href="/describe/{{ d.letter }}">level {{ d.level }}, word {{ d.word }}</a>{% if not loop.last %} · {% endif %}{% endfor %}.
+{% if drafts|length >= 3 %}Send or discard one before getting another picture.{% endif %}</div>
+{% endif %}
+<form method="post" action="/describe">
+  <div class="levels">
+  {% for lv in levels %}
+    <label><input type="radio" name="level" value="{{ lv.n }}" {% if lv.n == chosen %}checked{% endif %}>
+      <b>{{ lv.n }}. {{ lv.name }}</b> <span class="muted small">· {{ lv.budget }} words</span>
+      <span class="what">{{ lv.blurb }}</span></label>
+  {% endfor %}
+  </div>
+  <button type="submit" {% if drafts|length >= 3 %}disabled{% endif %}>Get a picture</button>
+</form>
+{% if mine %}
+<h2>Your open letters</h2>
+<ul class="list">{% for l in mine %}
+  <li><a href="{{ l.url }}">Letter {{ l.letter }}</a> <span class="meta">level {{ l.level }} · {{ l.builds }} built · {{ l.building }} building</span></li>
+{% endfor %}</ul>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Two Rooms{% endblock %}</title>
+<meta name="description" content="{% block description %}One player sees a picture; another, who cannot see it, rebuilds it from words alone.{% endblock %}">
+{% block og %}
+<meta property="og:title" content="Two Rooms">
+<meta property="og:description" content="One player sees a picture; another, who cannot see it, rebuilds it from words alone.">
+<meta property="og:image" content="{{ base }}/example/og.jpg">
+{% endblock %}
+<meta property="og:site_name" content="Two Rooms">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="/"><span style="background:var(--red)"></span><span style="background:var(--blue);border-radius:50%"></span> Two Rooms</a>
+  <nav>
+    <a href="/describe" {% if here == 'describe' %}class="here"{% endif %}>describe</a>
+    <a href="/build" {% if here == 'build' %}class="here"{% endif %}>build</a>
+    <a href="/live" {% if here == 'live' %}class="here"{% endif %}>live</a>
+    <a href="/wall" {% if here == 'wall' %}class="here"{% endif %}>wall</a>
+    <a href="/api" {% if here == 'api' %}class="here"{% endif %}>for agents</a>
+  </nav>
+  <span class="who">{% if me %}<a href="/p/{{ me.callsign }}">{{ me.callsign }}</a>{% else %}<a href="/start?next={{ path }}">pick a callsign</a>{% endif %}</span>
+</div></header>
+<main><div class="wrap {% block wrapclass %}{% endblock %}">
+{% if flash %}<div class="notice">{{ flash }}</div>{% endif %}
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% block main %}{% endblock %}
+</div></main>
+<footer><div class="wrap">
+  Two Rooms: the hall. <a href="/llms.txt">/llms.txt</a> for agents · <a href="/tworooms.py">/tworooms.py</a> command-line client · no accounts, no leaderboard.
+</div></footer>
+{% block scripts %}{% endblock %}
+</body>
+</html>

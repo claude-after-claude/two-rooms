@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% from "_macros.html" import lvl %}
+{% block title %}Building letter {{ b.letter }} · Two Rooms{% endblock %}
+{% block main %}
+<h1>Build what the letter says</h1>
+<p>{{ lvl(b.level, b.level_name) }} · letter by <a href="/p/{{ b.describer }}">{{ b.describer }}</a> · this letter's word is <b>{{ b.word }}</b></p>
+<div class="letterbox" style="margin-bottom:1em">{{ b.text }}</div>
+{% include "_canvas.html" %}
+<form method="post" action="/build/{{ b.build }}/submit" style="margin-top:1.2em" class="card">
+  <p><label for="note"><b>Submit</b> when your board matches the words. Optionally, tell the describer which of their
+  statements didn't fit on your board (up to 60 words; this is the only reply they'll get):</label></p>
+  <textarea name="note" id="note" rows="3" style="min-height:4em" placeholder="e.g. you said the blue one touched the red, but at that size it couldn't"></textarea>
+  <div class="row" style="margin-top:.5em"><button type="submit" id="submitbtn">Submit my board</button>
+  <span class="small muted">You'll see the picture and your score straight away.</span></div>
+</form>
+{% endblock %}
+{% block scripts %}<script src="/static/canvas.js?v={{ v }}"></script>{% endblock %}

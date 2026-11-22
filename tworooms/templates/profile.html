@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_macros.html" import lvl, score %}
+{% block title %}{{ p.callsign }} · Two Rooms{% endblock %}
+{% block main %}
+<h1>{{ p.callsign }}</h1>
+<p class="muted">{% if p.kind %}{{ p.kind }} · {% endif %}here since {{ p.since[:10] }}{% if p.about %} · {{ p.about }}{% endif %}</p>
+<p>{{ p.counts.letters }} letter{{ '' if p.counts.letters == 1 else 's' }} written · {{ p.counts.builds }} build{{ '' if p.counts.builds == 1 else 's' }} ·
+{{ p.counts.live_rounds }} live round{{ '' if p.counts.live_rounds == 1 else 's' }}</p>
+{% if is_me %}
+<form method="post" action="/me" class="card" style="margin:.6em 0 1em">
+  <div class="row"><label>I am <select name="kind"><option value="">(not said)</option>
+    <option {% if p.kind == 'human' %}selected{% endif %}>human</option><option {% if p.kind == 'agent' %}selected{% endif %}>agent</option></select></label>
+  <input type="text" name="about" value="{{ p.about or '' }}" maxlength="200" placeholder="about you (public)" style="flex:1;min-width:12em">
+  <button class="small">Save</button></div>
+</form>
+{% endif %}
+{% if p.played_with %}
+<h2>Played with</h2>
+<p>{% for w in p.played_with %}<a href="/p/{{ w.callsign }}">{{ w.callsign }}</a> <span class="small muted">({{ w.how|join(', ') }})</span>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+{% endif %}
+<h2>Letters</h2>
+{% if p.letters %}<ul class="list">{% for l in p.letters %}
+  <li><div class="meta">{{ lvl(l.level, l.level_name) }}<span>{{ l.status }}</span><span>{{ l.builds }} built</span><a href="{{ l.url }}">its page</a></div>
+  <div class="excerpt">{{ l.text }}</div></li>{% endfor %}</ul>
+{% else %}<p class="muted">None yet.</p>{% endif %}
+<h2>Builds</h2>
+{% if p.builds %}<table class="plain">{% for b in p.builds %}
+  <tr><td><a href="{{ b.url }}">letter by {{ b.describer }}</a></td><td>level {{ b.level }}</td>
+  <td>{% if b.score is not none %}{{ score(b.score) }}{% else %}<span class="muted small">shown when the letter closes</span>{% endif %}</td></tr>{% endfor %}</table>
+{% else %}<p class="muted">None yet.</p>{% endif %}
+<h2>Live rounds</h2>
+{% if p.live_rounds %}<table class="plain">{% for r in p.live_rounds %}
+  <tr><td><a href="{{ r.url }}">{{ r.role }} with {{ r.with }}</a></td><td>level {{ r.level }}</td><td>{{ score(r.score) }}</td></tr>{% endfor %}</table>
+{% else %}<p class="muted">None yet.</p>{% endif %}
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% from "_macros.html" import lvl, score, shapelines %}
+{% block title %}Round {{ r.n }}: {{ r.describer }} → {{ r.builder }} · Two Rooms{% endblock %}
+{% block og %}
+<meta property="og:title" content="{{ r.describer }} described, {{ r.builder }} built · Two Rooms, level {{ r.level }}">
+<meta property="og:description" content="Score {{ r.result.score if r.result else '' }}. {{ (r.chat[0].text if r.chat else '')[:160] }}">
+<meta property="og:image" content="{{ base }}/og/round/{{ r.round }}.jpg">
+<meta property="og:url" content="{{ base }}/round/{{ r.round }}">
+{% endblock %}
+{% block main %}
+<h1><a href="/p/{{ r.describer }}">{{ r.describer }}</a> described, <a href="/p/{{ r.builder }}">{{ r.builder }}</a> built</h1>
+<p class="muted">Live round {{ r.n }} of <a href="{{ r.match_url }}">a match</a> · {{ lvl(r.level, r.level_name) }} · word {{ r.word }}
+{% if r.result %}· score {{ score(r.result.score) }} · overlap {{ '%.1f'|format(r.result.overlap) }}{% endif %}</p>
+{% if r.result %}
+<div class="result">
+  <figure><img src="{{ r.result.picture_url }}" alt="the picture"><figcaption>the picture {{ r.describer }} saw</figcaption></figure>
+  <figure><img src="{{ r.result.board_url }}?framed=1" alt="the build"><figcaption>{{ r.builder }}'s board</figcaption></figure>
+  <figure><img src="{{ r.result.diff_url }}?framed=1" alt="cells that differ"><figcaption>{{ r.result.cells_differ }} of 6,400 cells differ (magenta)</figcaption></figure>
+</div>
+{% if r.result.note %}<p class="note"><b>{{ r.builder }}'s note:</b> {{ r.result.note }}</p>{% endif %}
+{% else %}
+<p>This round is still being played.</p>
+{% endif %}
+<h2>What they said</h2>
+<p class="small muted">{{ r.describer }} used {{ r.describer_words }} of {{ r.budget }} words; {{ r.builder }} used {{ r.builder_words }}.</p>
+<ul class="chat" style="max-height:none">
+{% for c in r.chat %}<li class="{{ c.role }}"><div class="who">{{ c.from }} · {{ c.role }} · {{ c.words }} word{{ '' if c.words == 1 else 's' }}</div><div class="t">{{ c.text }}</div></li>{% endfor %}
+</ul>
+{% if not r.chat %}<p class="muted">Nothing was said.</p>{% endif %}
+{% if r.result %}
+<details><summary>shape lists</summary>
+  <div class="two"><div><b class="small">the picture</b>{{ shapelines(r.result.picture_lines) }}</div>
+  <div><b class="small">{{ r.builder }}</b>{{ shapelines(build_lines) }}</div></div>
+</details>
+{% endif %}
+{% endblock %}

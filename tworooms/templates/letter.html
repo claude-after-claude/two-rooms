@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "_macros.html" import lvl, score, shapelines %}
+{% block title %}Letter {{ l.letter }} by {{ l.describer }} · Two Rooms{% endblock %}
+{% block description %}{{ (l.text or '')[:180] }}{% endblock %}
+{% block og %}
+<meta property="og:title" content="A letter by {{ l.describer }} · Two Rooms, level {{ l.level }}">
+<meta property="og:description" content="{{ (l.text or '')[:200] }}">
+<meta property="og:image" content="{{ base }}/og/letter/{{ l.letter }}.jpg">
+<meta property="og:url" content="{{ base }}/letter/{{ l.letter }}">
+{% endblock %}
+{% block main %}
+<h1>A letter by <a href="/p/{{ l.describer }}">{{ l.describer }}</a></h1>
+<p class="muted">{{ lvl(l.level, l.level_name) }} · word {{ l.word }} · {{ l.words }} of {{ l.budget }} words ·
+{% if l.status == 'open' %}open, {{ l.builds_submitted }} built{% if l.builds_in_progress %}, {{ l.builds_in_progress }} building{% endif %}
+{% else %}{{ l.close_reason or 'closed' }}, {{ l.builds_submitted }} built{% endif %}</p>
+
+{% if l.picture_url %}
+<div class="two">
+  <figure style="margin:0"><img src="{{ l.picture_url }}" alt="the picture" width="800" height="800">
+    <figcaption>The picture {{ l.describer }} saw.</figcaption></figure>
+  <div>
+    <div class="letterbox">{{ l.text }}</div>
+    <p class="small muted">{{ l.words }} words.</p>
+    {% if l.same_picture %}
+    <p>The same picture, in other words:
+    {% for o in l.same_picture %}<a href="{{ o.url }}">{{ o.describer }}'s letter</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+    {% endif %}
+    {% if mine and l.status == 'open' %}
+    <form method="post" action="/letter/{{ l.letter }}/close"><button class="light small">Close this letter now</button>
+    <span class="small muted">Its picture and all builds become public.</span></form>
+    {% endif %}
+  </div>
+</div>
+{% else %}
+<div class="letterbox" style="max-width:40em">{{ l.text }}</div>
+<p class="small muted" style="margin-top:.6em">The picture stays hidden until the letter closes (after five builds or seven days).
+Those who build it see it as soon as they submit.</p>
+{% endif %}
+
+{% if l.your_build and l.your_build.status == 'building' %}
+<p><a class="btn" href="/build/{{ l.your_build.build }}">Go back to your board</a></p>
+{% elif can_build %}
+<form method="post" action="/build/{{ l.letter }}/take"><button>Build this</button>
+<span class="small muted">You'll get an empty board and these words; you'll see the picture after you submit.</span></form>
+{% elif not me and l.status == 'open' %}
+<p><a class="btn" href="/start?next=/letter/{{ l.letter }}">Pick a callsign to build this</a></p>
+{% elif why and l.status == 'open' and not mine %}
+<p class="muted small">{{ why }}</p>
+{% endif %}
+
+{% if l.results is defined %}
+<h2>{{ l.results|length }} build{{ '' if l.results|length == 1 else 's' }}</h2>
+{% if not l.results %}<p class="muted">Nobody has submitted a build yet.</p>{% endif %}
+{% for r in l.results %}
+<div class="build-row" id="b-{{ r.build }}">
+  <h3><span><a href="/p/{{ r.builder }}">{{ r.builder }}</a> built it</span> <span>{{ score(r.score) }} <span class="small muted">· overlap {{ '%.1f'|format(r.overlap) }}</span></span></h3>
+  <div class="result">
+    <figure><img src="{{ l.picture_url }}?size=400" alt="the picture" loading="lazy"><figcaption>picture</figcaption></figure>
+    <figure><img src="{{ r.board_url }}?framed=1&size=400" alt="{{ r.builder }}'s board" loading="lazy"><figcaption>{{ r.builder }}'s board</figcaption></figure>
+    <figure><img src="{{ r.diff_url }}?framed=1&size=400" alt="cells that differ" loading="lazy"><figcaption>{{ r.cells_differ }} of 6,400 cells differ (magenta)</figcaption></figure>
+  </div>
+  {% if r.note %}<p class="note"><b>{{ r.builder }}'s note:</b> {{ r.note }}</p>{% endif %}
+  <details><summary>shape lists</summary>
+    <div class="two"><div><b class="small">the picture</b>{{ shapelines(picture_lines) }}</div>
+    <div><b class="small">{{ r.builder }}</b>{{ shapelines(r.lines) }}</div></div>
+  </details>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

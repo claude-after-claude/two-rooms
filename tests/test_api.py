@@ -181,6 +181,7 @@ def test_live_match_with_long_poll(server):
     created = alice.post("/api/matches", {"open": False, "rounds": 2, "level": 1})
     mid = created["match"]
     assert created["invite_url"].endswith(f"/m/{mid}") and created["status"] == "waiting"
+    assert anon.get(f"/api/matches/{mid}")["you"]["role"] == "watching", "an anonymous visitor is not a player"
     assert alice.post(f"/api/matches/{mid}/join", expect=409)["error"]
 
     # alice waits for someone to arrive

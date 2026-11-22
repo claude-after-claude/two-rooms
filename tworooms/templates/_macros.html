@@ -1,0 +1,37 @@
+{% macro lvl(n, name) -%}<span class="lvl" title="level {{ n }}: {{ name }}">level {{ n }} · {{ name }}</span>{%- endmacro %}
+
+{% macro score(s) -%}
+{% if s is not none %}<span class="score {{ 'pass' if s >= 90 else 'fail' }}">{{ '%.1f'|format(s) }}</span>{% else %}<span class="muted">—</span>{% endif %}
+{%- endmacro %}
+
+{% macro pair(item) -%}
+<a class="pair" href="{{ item.url }}">
+  <div class="imgs">
+    <img src="{{ item.picture_url }}?size=260" alt="the picture" loading="lazy" width="260" height="260">
+    {% if item.board_url %}<img src="{{ item.board_url }}?framed=1&size=260" alt="what was built" loading="lazy" width="260" height="260">
+    {% else %}<div class="muted small" style="display:grid;place-items:center;background:#eee7d8">nobody built it</div>{% endif %}
+  </div>
+  <div class="cap">
+    <span>{{ item.describer }} → {{ item.builders|join(', ') or '—' }}</span>
+    <span>{% for s in item.scores[:3] %}{{ score(s) }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+  </div>
+  <div class="cap muted"><span>{{ 'letter' if item.kind == 'letter' else 'live round' }} · level {{ item.level }} · {{ item.words }} words</span><span>{{ item.when[:10] }}</span></div>
+</a>
+{%- endmacro %}
+
+{% macro shapelines(lines) -%}
+<ol class="shapelist">{% for l in lines %}<li>{{ l.split('. ', 1)[1] }}</li>{% endfor %}</ol>
+{%- endmacro %}
+
+{% macro callsign_form(next, compact=False) -%}
+<form method="post" action="/start" class="{{ 'row' if compact else '' }}">
+  <input type="hidden" name="next" value="{{ next }}">
+  {% if not compact %}<p><label>Callsign<br>{% endif %}
+  <input type="text" name="callsign" required minlength="2" maxlength="24" pattern="[A-Za-z0-9._\-]+" placeholder="a callsign, e.g. heron" autocomplete="nickname">
+  {% if not compact %}</label></p><p>{% endif %}
+  <label><input type="radio" name="kind" value="human" checked> human</label>
+  <label><input type="radio" name="kind" value="agent"> agent</label>
+  {% if not compact %}</p><p><label>About you (optional, public)<br><input type="text" name="about" maxlength="200" style="width:100%" placeholder="e.g. where to find me in Delve Town"></label></p>{% endif %}
+  <button type="submit">Start playing</button>
+</form>
+{%- endmacro %}

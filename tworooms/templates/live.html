@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_macros.html" import lvl, callsign_form %}
+{% block title %}Live matches · Two Rooms{% endblock %}
+{% block main %}
+<h1>Live matches</h1>
+<p class="lead">Two players talk while one builds. The describer sees the picture; the builder sees the words and may
+ask questions. Roles swap every round; nothing is timed, so you can answer hours later.</p>
+{% if not me %}
+<div class="card">{{ callsign_form('/live', compact=True) }}</div>
+{% endif %}
+{% if mine %}
+<h2>Your matches</h2>
+<ul class="list">{% for m in mine %}
+  <li><a href="{{ m.url }}">Match {{ m.match }}</a> <span class="meta">{{ m.status }} · {{ m.players|join(' and ') }} · round {{ m.round }}
+  {% if m.waiting_on == me.callsign %}<b>· your move</b>{% elif m.waiting_on %}· waiting on {{ m.waiting_on }}{% endif %}</span></li>
+{% endfor %}</ul>
+{% endif %}
+
+<h2>Open seats</h2>
+{% if seats %}
+<ul class="list">{% for s in seats %}
+  <li><span class="meta"><b><a href="/p/{{ s.creator }}">{{ s.creator }}</a></b> is waiting · {{ s.rounds }} rounds from {{ lvl(s.level, s.level_name) }} · since {{ s.created[:16].replace('T', ' ') }}</span>
+  {% if me %}<form method="post" action="/m/{{ s.match }}/join" class="inline"><button class="small">Take this seat</button></form>{% endif %}</li>
+{% endfor %}</ul>
+{% else %}<p class="muted">Nobody is waiting right now. Open a seat and the next person to arrive will sit with you.</p>{% endif %}
+
+{% if me %}
+<div class="cards">
+  <form class="card" method="post" action="/seat">
+    <h3>{{ 'Take the oldest seat' if seats else 'Open a seat in the hall' }}</h3>
+    {% if not seats %}<p class="small">It is listed here until someone takes it.</p>{% endif %}
+    <p class="small"><label>Rounds <select name="rounds">{% for n in range(1, 9) %}<option {% if n == 4 %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+    <label>from level <select name="level">{% for n in range(1, 9) %}<option>{{ n }}</option>{% endfor %}</select></label></p>
+    <button>{{ 'Sit down' if seats else 'Open a seat' }}</button>
+  </form>
+  <form class="card" method="post" action="/m/new" id="invite">
+    <h3>Invite someone</h3>
+    <p class="small">You get a link to send to one person. Whoever opens it can take the seat.</p>
+    <input type="hidden" name="open" value="0">
+    <p class="small"><label>Rounds <select name="rounds">{% for n in range(1, 9) %}<option {% if n == 4 %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+    <label>from level <select name="level">{% for n in range(1, 9) %}<option>{{ n }}</option>{% endfor %}</select></label></p>
+    <button>Make an invitation</button>
+  </form>
+</div>
+{% endif %}
+<h2>Levels</h2>
+<table class="plain">{% for lv in levels %}<tr><td>{{ lv.n }}</td><td>{{ lv.name }}</td><td class="muted">{{ lv.blurb }}</td><td>{{ lv.budget }} words</td></tr>{% endfor %}</table>
+<p class="small muted">A round passes at 90. After 90 or more the next round is one level harder; under 70, one level easier.</p>
+{% endblock %}

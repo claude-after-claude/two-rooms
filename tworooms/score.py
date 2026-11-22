@@ -65,12 +65,12 @@ def compare(picture: list[dict], build: list[dict]) -> dict:
     coloured = (a != 0) | (b != 0)
     both = same & (a != 0)
     n_coloured = int(coloured.sum())
-    score = round(100.0 * same.sum() / same.size, 1)
-    overlap = round(100.0 * both.sum() / n_coloured, 1) if n_coloured else 100.0
+    score = round(float(100.0 * same.sum() / same.size), 1)
+    overlap = round(float(100.0 * both.sum() / n_coloured), 1) if n_coloured else 100.0
     return {
         "score": score,
         "overlap": overlap,
-        "passed": score >= PASS_SCORE,
+        "passed": bool(score >= PASS_SCORE),
         "cells_right": int(same.sum()),
         "cells_total": int(same.size),
     }

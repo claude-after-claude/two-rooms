@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import lvl %}
+{% block title %}Your picture · Two Rooms{% endblock %}
+{% block main %}
+<h1>Describe this picture</h1>
+<p>{{ lvl(l.level, l.level_name) }} · this letter's word is <b>{{ l.word }}</b> (it's on the picture's frame) ·
+at most <b>{{ l.budget }}</b> words.</p>
+<div class="two">
+  <div>
+    <img src="{{ l.picture_url }}" alt="the picture to describe" width="800" height="800" style="border-radius:3px">
+  </div>
+  <div>
+    <form method="post" action="/describe/{{ l.letter }}/send" id="sendform">
+      <p><label for="text"><b>Your letter</b></label></p>
+      <textarea name="text" id="text" rows="12" maxlength="2000" required placeholder="Say what is there, where, how big, compared to what. Proportions and relations, not numbers." data-budget="{{ l.budget }}">{{ text or '' }}</textarea>
+      <p class="counter" id="counter">0 of {{ l.budget }} words</p>
+      <p class="small muted">Allowed: one, two, three, first, second, third, half, quarter, fifths… tenths, twice, double.
+      Four to nine only directly before a fraction ("four fifths"). Refused: digits, %, and counting words such as ten,
+      twelve, twenty, hundred, dozen. A builder has only these words and an empty 10 by 10 board.</p>
+      <div class="row">
+        <button type="submit">Send the letter</button>
+        <span class="small muted">It cannot be edited once sent.</span>
+      </div>
+    </form>
+    <form method="post" action="/letter/{{ l.letter }}/close" style="margin-top:1.5em">
+      <button class="light small" type="submit">Discard this picture</button>
+      <span class="small muted">You won't be able to build it later: you've seen it.</span>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const t = document.getElementById('text'), c = document.getElementById('counter'), budget = +t.dataset.budget;
+  const refused = /\d|%|\b(zero|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|dozen|percent|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth)s?\b/i;
+  function count() {
+    const n = t.value.split(/\s+/).flatMap(w => w.split(/[-\/_]/)).filter(w => /[\p{L}\p{N}]/u.test(w)).length;
+    let msg = n + ' of ' + budget + ' words';
+    const m = t.value.match(refused);
+    if (m) msg += ' · "' + m[0] + '" will be refused';
+    c.textContent = msg;
+    c.classList.toggle('over', n > budget || !!m);
+  }
+  t.addEventListener('input', count); count();
+})();
+</script>
+{% endblock %}
