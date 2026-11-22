@@ -11,7 +11,7 @@ import time
 from . import config as C
 from . import db as D
 from .pictures import generate_with_kind
-from .reveal import loss
+from .reveal import coloured, loss
 from .score import readings
 from .shapes import ShapeError, describe, normalise
 from .words import Refused, check_message, count_words
@@ -156,7 +156,9 @@ class Hall:
 
     # ------------------------------------------------------------ players
 
-    def create_player(self, callsign: str, kind: str | None = None, about: str | None = None) -> dict:
+    def create_player(self, callsign: str, kind: str | None = None, about: str | None = None,
+                      via: str | None = None) -> dict:
+        """`via` is "town" for a player the hall's town daemon registers for a Delve Town handle (admin key only)."""
         callsign = (callsign or "").strip()
         if not (C.CALLSIGN_MIN <= len(callsign) <= C.CALLSIGN_MAX) or not all(
                 ch.isascii() and (ch.isalnum() or ch in ".-_") for ch in callsign):
@@ -172,8 +174,8 @@ class Hall:
         key = "tr_" + secrets.token_urlsafe(24)
         with D.tx(self.db):
             self.db.execute(
-                "INSERT INTO players (callsign, callsign_lc, key_hash, kind, about, created) VALUES (?, ?, ?, ?, ?, ?)",
-                (callsign, callsign.lower(), hash_key(key), kind or None, about, D.now()))
+                "INSERT INTO players (callsign, callsign_lc, key_hash, kind, about, created, via) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (callsign, callsign.lower(), hash_key(key), kind or None, about, D.now(), "town" if via == "town" else None))
         return {
             "callsign": callsign, "key": key,
             "note": "Keep this key: it is the only way to act as this callsign, and there is no way to recover it.",
@@ -405,6 +407,8 @@ class Hall:
             out["picture_url"] = f"/api/letters/{lid}/picture.png"
             builds = self.all("SELECT * FROM builds WHERE letter_id=? AND status='submitted' ORDER BY submitted", lid)
             out["results"] = [self._result_card(b, r["picture_id"]) for b in builds]
+            out["picture_words"] = [coloured(s) for s in self.shapes_of(r["picture_id"])]
+            out["boards_url"] = f"/og/boards/{lid}.png"
             if r["status"] == "closed":
                 out["same_picture"] = [
                     {"letter": o["id"], "describer": self.callsign(o["describer_id"]), "url": f"/letter/{o['id']}"}
@@ -460,11 +464,14 @@ class Hall:
         return {
             "build": b["id"], "builder": self.callsign(b["builder_id"]), **self._readings(b),
             "loss": loss(pic, shapes), "checks": self._checks(b), "details": {"cells_match": b["score"]},
+            "via": b["via"], "via_url": b["via_url"],
             "board_url": f"/api/builds/{b['id']}/board.png", "diff_url": f"/api/builds/{b['id']}/diff.png",
             "note": b["note"], "shapes": shapes, "submitted": iso(b["submitted"]),
         }
 
-    def take_letter(self, me, lid) -> dict:
+    def take_letter(self, me, lid, via_url: str | None = None) -> dict:
+        """A player the town daemon registered builds by post: the build is marked "town", with a link to the reply
+        it came from in `via_url`."""
         self.sweep()
         r = self.letter(lid)
         existing = self.one("SELECT * FROM builds WHERE letter_id=? AND builder_id=? AND status='building'", lid, me["id"])
@@ -476,8 +483,10 @@ class Hall:
         with D.tx(self.db):
             bid = D.new_id(self.db)
             t = D.now()
-            self.db.execute("INSERT INTO builds (id, letter_id, builder_id, status, created, updated) "
-                            "VALUES (?, ?, ?, 'building', ?, ?)", (bid, lid, me["id"], t, t))
+            via = "town" if me["via"] == "town" else None
+            via_url = via_url if via and isinstance(via_url, str) and via_url.startswith("https://delve.town/") else None
+            self.db.execute("INSERT INTO builds (id, letter_id, builder_id, status, created, updated, via, via_url) "
+                            "VALUES (?, ?, ?, 'building', ?, ?, ?, ?)", (bid, lid, me["id"], t, t, via, via_url))
         return self.build_state(me, bid)
 
     # ------------------------------------------------------------ builds (both modes)
@@ -1273,7 +1282,9 @@ class Hall:
             return
         self._last_sweep = t
         with D.tx(self.db):
-            self.db.execute("UPDATE builds SET status='expired' WHERE status='building' AND letter_id IS NOT NULL AND updated<?",
+            # a build by post waits for its builder's next reply; the town daemon closes its letters after two days
+            self.db.execute("UPDATE builds SET status='expired' WHERE status='building' AND letter_id IS NOT NULL "
+                            "AND COALESCE(via, '')!='town' AND updated<?",
                             (t - C.BUILD_IDLE_HOURS * 3600,))
             old = self.all("SELECT id FROM letters WHERE status='open' AND sent<?", t - C.LETTER_OPEN_DAYS * 86400)
             for r in old:

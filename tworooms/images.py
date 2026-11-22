@@ -81,3 +81,8 @@ class Images:
     def og_letter(self, text, caption, sub) -> bytes:
         k = R.key("ogletter", text, caption, sub)
         return self.cache.get(k, lambda: R.jpeg_bytes(R.og_letter(text, caption, sub)))
+
+    def letter_boards(self, shapes, level, word, picture_id, cards, title) -> bytes:
+        k = R.key("boards", picture_id, word, cards, title)
+        return self.cache.get(k, lambda: R.png_bytes(R.letter_boards(self.painted_img(shapes, level, word, picture_id),
+                                                                     cards, title)))

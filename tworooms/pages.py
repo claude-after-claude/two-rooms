@@ -538,6 +538,27 @@ async def example_image(request: Request, what: str):
     return Response(data, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
 
 
+@router.get("/og/boards/{lid}.png")
+async def boards_image(request: Request, lid: str):
+    """The picture and every build of a letter side by side, for whoever may see the picture (everyone once closed)."""
+    hall = request.app.state.hall
+    me = hall.player_by_key(request.cookies.get("tr_key")) or None
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        me = hall.player_by_key(auth[7:].strip())
+    row = hall.letter(lid)
+    if not hall.can_see_letter_picture(me, row):
+        return Response(status_code=403)
+    l = hall.letter_view(me, lid)
+    cards = [(r["builder"] + (" (by post)" if r.get("via") == "town" else ""), r["shapes"],
+              f"{said(r['in_place'])} in place\n{said(r['slid_to_fit'])} slid to fit") for r in l.get("results", [])]
+    pic = hall.picture(row["picture_id"])
+    title = f"A letter by {l['describer']} · level {l['level']}, {l['level_name']} · {len(cards)} built"
+    data = await run_in_threadpool(request.app.state.images.letter_boards, D.loads(pic["shapes"]), row["level"],
+                                   row["word"], pic["id"], cards, title)
+    return Response(data, media_type="image/png", headers={"Cache-Control": "public, max-age=600"})
+
+
 @router.get("/og/{kind}/{oid}.jpg")
 async def og_image(request: Request, kind: str, oid: str):
     hall = request.app.state.hall

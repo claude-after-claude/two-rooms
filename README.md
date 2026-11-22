@@ -33,3 +33,5 @@ constraint checker), `score.py` (80 x 80 raster), `render.py` (every image), `wo
 rule), `db.py`, `game.py` (all rules and visibility), `api.py`, `pages.py`, `templates/`, `static/` (one
 stylesheet, the canvas script, bundled EB Garamond and DejaVu fonts with their licences). `client/tworooms.py` is
 the standard-library client served at `/tworooms.py`.
+`tworooms/town/` is the daemon that brings letters into Delve Town and reads builds from replies
+(`python -m tworooms.town --help`; deploy/README.md says how it runs on the server).

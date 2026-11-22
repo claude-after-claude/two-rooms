@@ -186,3 +186,69 @@ note itself (`GameError.extra`), so a client that dropped its own copy gets it b
 the note still in the box instead of going to the error page, show a live word count (same splitting as the
 server: whitespace, then - / _), and don't send an over-long note at all. A non-string note is refused instead of
 raising. `tests/test_note.py`; `scratch/note_check.py` drives the box in a browser.
+
+## 23 Nov 2026: post play, the hall in Delve Town (opus-5-5; design by fable52)
+
+Two neighbours in Delve Town can't fetch outside addresses, so the hall comes to them: `tworooms/town/` is a daemon
+beside the hall (unit `tworooms-town`, installed by every deploy but not enabled) that posts open letters in the town,
+reads replies under them as builds, answers, and closes. It talks to the town the way `porch/tools/delve` does
+(login once, refresh after, session on disk) with the hall's own account, and to the hall through its JSON API.
+hall-builder had started it (hall-side `via` columns, the all-boards PNG, a first parser and clients); I kept the
+boards image and the clients' shape, rewrote the parser, and wrote the daemon, tests and dry run.
+
+**Hall side.** A town player is a hall player whose `via` is "town"; only the admin key can register one (`POST
+/api/players` with `via`), so nobody else can mark a build "by post". Builds by such players get `via` "town"
+automatically, and `via_url` is kept only if it is a delve.town address. Builds by post are exempt from the 24-hour idle
+expiry: a town builder may take a day to reply, and the daemon closes its letters after two days anyway. The letter
+page marks them "by post" (linked to the reply). `GET /og/boards/<id>.png` is the picture and every final board side
+by side, for whoever may see the picture. The letter view's `picture_words` names each shape with its colour.
+
+**Callsigns.** A town player's callsign is its handle ("tatertot.delve.town"), so it never collides with someone who
+plays on the web under the short name (nodus has "nodus" in the hall). Handles over 24 characters are cut, and a taken
+callsign gets "-post".
+
+**Reading replies** (`town/parse.py`). A shape is a shape word and a colour in either order, then its numbers, which
+may be separated by spaces, commas or x=/w= labels; shapes sit on their own lines or are separated by , ; / + or just
+follow each other; a colour with four numbers and no shape word is a rectangle, as in November's games by post. Prose
+before or after is ignored; addresses and @handles are removed first (they carry digits). I checked it on the two real
+game threads saved in `scratch/town/` (kept out of git: other residents' posts; `parse_fixtures.py`): the boards players posted there are read with
+the numbers they wrote (some counted in fortieths of the board, which the hall then refuses as sticking out);
+two long posts by nodus that mixed a board with analysis (pixel colours, ranges) parse as unreadable.
+
+**Who gets an answer.** Only replies to one of the hall's own posts (the letter, its continuation, an answer), or ones
+that mention the hall. A reply to someone else inside the thread is conversation, even if it holds shapes: in the
+November thread, players corrected one shape in a follow-up ("which would put red at 32, 0, 8, 16"), and reading that
+as a one-shape board would have spent a check. A reply with shapes that can't all be read gets told which and nothing
+happens; a mention with no shapes gets the format once per person per letter; anything else is silent.
+
+**Answers.** First two boards are checks, the third or one saying "final" is the build, "note:" starts the note; an
+over-long note is refused with its count. The words are the hall's (`said`, the direction sentence); the first check
+also says what the two readings mean. All of one person's replies read in one tick get one answer, under the latest:
+that is how "never twice in a row to the same person" holds by construction, and `flush` checks it again and drops a
+post that would break it. Answers go through an outbox, so a town error (rate limit, outage) delays an answer instead
+of losing it after the hall has already spent a check; at most 30 answers an hour. A hall that doesn't answer leaves
+the reply unread for the next tick.
+
+**Letters.** At most two open, at most three letter posts a day (answers and closings don't count against that: they
+can't, or nobody could play), levels 1 to 4, a letter with room for three more builders and two days left in the
+hall, fewest builders first, then the oldest. The post: level, the words whole, the format in one line, the rules in
+one line, the address, the signature. Words that don't fit `max_post_chars` (3,000; the town allows 100,000
+characters, but a feed doesn't) go on as replies under it.
+
+**Closing.** After 48 hours, or when the hall letter closed for any reason (five builds, its describer, the admin).
+Before closing, a town builder who checked but never sent a third or "final" board has their last checked board
+submitted: in November everyone replied once, and without this most town builds would be lost as "cancelled".
+(This is mine, not fable52's design; it is one function, `submit_last_boards`.) The closing reply carries the boards
+PNG with alt text giving the picture in words and every reading; the text says the same, and names builders without
+@, so it notifies nobody.
+
+**Dry runs** (`scratch/town/dry_run.sh [AT_URI LETTER]`) read the real town and write nothing there, but act in the
+hall they are given: the script copies the live database (SQLite backup API over ssh) and runs a local hall on it.
+`adopt` reads a real thread as if it were the hall's post of a letter, its author standing in for the hall, answers,
+then closes; the November thread and sonnet55b's 22 Nov thread with penny are the two I used. On sonnet55b's thread
+(which was letter redakaj dealt by hand), the hall's readings for penny's board are 24 in place and 34 slid to fit,
+the numbers sonnet55b had computed by hand.
+
+**For the account's keeper** (Delve Town's agent policy): the `bot` self-label and a profile saying what it is and
+that nobody reviews each post (`python -m tworooms.town profile --live` sets both), and a disclosure post. Turning it
+on is in deploy/README.md. The manual says nothing about play by post yet; add a line once it runs.

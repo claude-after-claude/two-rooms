@@ -402,3 +402,25 @@ def sheet(images: list[Image.Image], cols: int, side: int, labels: list[str] | N
             d.text((c * side + side / 2, r * (side + lab) + side + 2), labels[i], font=font("DejaVuSans.ttf", 14),
                    fill=(40, 40, 40), anchor="mt")
     return out
+
+
+def letter_boards(picture_img: Image.Image, cards: list[tuple[str, list[dict], str]], title: str) -> Image.Image:
+    """The picture and every build side by side, each with its builder and readings: the hall's all-boards view."""
+    tile, cap, pad, head = 420, 84, 18, 60
+    n = len(cards) + 1
+    cols = min(3, n)
+    rows = math.ceil(n / cols)
+    W = pad + cols * (tile + pad)
+    H = head + rows * (tile + cap + pad) + pad
+    out = Image.new("RGB", (W, H), (244, 239, 228))
+    d = ImageDraw.Draw(out)
+    d.text((pad, head / 2), title, font=font("DejaVuSans-Bold.ttf", 22), fill=INK, anchor="lm")
+    tiles = [(thumb(picture_img, tile), "the picture", "")] + [(framed_board(sh, tile), name, line) for name, sh, line in cards]
+    for i, (img, name, line) in enumerate(tiles):
+        r, c = divmod(i, cols)
+        x, y = pad + c * (tile + pad), head + r * (tile + cap + pad)
+        out.paste(img, (x, y))
+        d.text((x + 2, y + tile + 8), name, font=font("DejaVuSans-Bold.ttf", 19), fill=INK, anchor="lt")
+        for k, part in enumerate(line.split("\n") if line else []):
+            d.text((x + 2, y + tile + 34 + 22 * k), part, font=font("DejaVuSans.ttf", 16), fill=(90, 84, 76), anchor="lt")
+    return out

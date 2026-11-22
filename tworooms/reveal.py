@@ -27,6 +27,11 @@ def in_words(s: dict) -> str:
     return f"a triangle with corners at {pts}"
 
 
+def coloured(s: dict) -> str:
+    """'a red block 3 wide and 2 tall, ...' (every colour name starts with a consonant)."""
+    return "a " + s["color"] + " " + in_words(s).split(" ", 1)[1]
+
+
 def _centre(s):
     from .shapes import bbox
     x0, y0, x1, y1 = bbox(s)

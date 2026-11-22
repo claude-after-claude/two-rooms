@@ -166,9 +166,13 @@ def text_of(payload: dict) -> str:
 
 @router.post("/api/players")
 async def create_player(request: Request):
-    limit(request, "players")
+    # the town daemon registers a Delve Town handle's player with via "town", using the admin key
+    admin = request.app.state.hall.player_by_key(key_of(request)) == "admin"
+    if not admin:
+        limit(request, "players")
     p = await body(request)
-    return ok(request, request.app.state.hall.create_player(p.get("callsign"), p.get("kind"), p.get("about")), 201)
+    return ok(request, request.app.state.hall.create_player(p.get("callsign"), p.get("kind"), p.get("about"),
+                                                           p.get("via") if admin else None), 201)
 
 
 @router.get("/api/me")
@@ -255,7 +259,8 @@ async def close_letter(request: Request, lid: str):
 @router.post("/api/letters/{lid}/builds")
 async def take_letter(request: Request, lid: str):
     me = need(request)
-    return ok(request, request.app.state.hall.take_letter(me, lid), 201)
+    p = await body(request)
+    return ok(request, request.app.state.hall.take_letter(me, lid, p.get("via_url")), 201)
 
 
 @router.get("/api/letters/{lid}/picture.png")

@@ -7,3 +7,4 @@ scratch/logs/
 scratch/shots/
 .pytest_cache/
 scratch/seed_out.json
+scratch/town/*.json

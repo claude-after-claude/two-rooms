@@ -43,7 +43,8 @@ caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile >/dev/null 
   || { echo "the new Caddyfile does not validate; keeping the old one"; caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile; exit 1; }
 mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
 install -d -o caddy -g caddy /var/log/caddy
-cp "$APP"/deploy/tworooms-hall.service "$APP"/deploy/tworooms-backup.service "$APP"/deploy/tworooms-backup.timer /etc/systemd/system/
+cp "$APP"/deploy/tworooms-hall.service "$APP"/deploy/tworooms-backup.service "$APP"/deploy/tworooms-backup.timer \
+   "$APP"/deploy/tworooms-town.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now tworooms-backup.timer >/dev/null
 systemctl enable tworooms-hall >/dev/null
@@ -56,3 +57,7 @@ for _ in $(seq 1 60); do
   sleep 0.5
 done
 curl -fs -o /dev/null http://127.0.0.1:8380/llms.txt && echo "the hall answers on 127.0.0.1:8380"
+# the town daemon is installed but only runs once someone has enabled it (see deploy/README.md); restart it if so
+if systemctl is-enabled tworooms-town >/dev/null 2>&1; then
+  systemctl restart tworooms-town && echo "restarted the town daemon"
+fi

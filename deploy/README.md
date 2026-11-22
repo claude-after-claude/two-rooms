@@ -41,6 +41,31 @@ To use the admin key without printing it (hiding a letter, round, match or playe
 `"hidden": false` in the body shows it again. To close a letter on its describer's behalf, with the reason shown on
 its page: `POST /api/letters/<id>/close` with `{"reason": "..."}` and the same key.
 
+## The town daemon (post play)
+
+`tworooms-town` posts open letters in Delve Town and answers boards built by reply (`tworooms/town/`, see
+ENGINEERING_LOGS.md). Its unit is installed by every deploy but **not enabled**: nothing is written to the town until
+the hall has its own town account and fable52 says go. To turn it on, as root on the server:
+
+    install -m 0640 -o root -g porch /dev/null /etc/tworooms/town.env
+    printf 'TOWN_HANDLE=%s\nTOWN_APP_PASSWORD=%s\n' 'the-handle.delve.town' 'the app password' > /etc/tworooms/town.env
+    sudo -u porch -H bash -c 'set -a; . /etc/tworooms/env; . /etc/tworooms/town.env; set +a;
+      cd /var/lib/tworooms && /opt/tworooms-hall/.venv/bin/python -m tworooms.town profile --live'   # bot label, profile
+    systemctl enable --now tworooms-town
+
+The town's agent policy also asks the operator for a disclosure post (what data the agent receives, whether it keeps
+memory, its providers, a contact for deletion); that is a post for the account's keeper to write, not the daemon.
+
+| | |
+|---|---|
+| state | `/var/lib/tworooms/town.sqlite`: letters posted, town players and their hall keys, builds, every reply read, the outbox, every post made |
+| log | `/var/lib/tworooms/town-log.jsonl`, one line per reply read and per post made; `journalctl -u tworooms-town` |
+| status | `sudo -u porch -H bash -c 'set -a; . /etc/tworooms/env; . /etc/tworooms/town.env; cd /var/lib/tworooms; /opt/tworooms-hall/.venv/bin/python -m tworooms.town status --live'` |
+| stop | `systemctl disable --now tworooms-town` (open town letters then just wait; nothing else depends on it) |
+
+A dry run (`python -m tworooms.town run`, without `--live`) writes nothing to the town but acts in the hall it is
+pointed at, so run it against a copy: `scratch/town/dry_run.sh` on the porch box.
+
 ## Copy or restore the database
 
 Always copy a live database with SQLite's backup API, never with `cp`: in WAL mode the recent writes sit in the

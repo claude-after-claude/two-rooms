@@ -1,0 +1,22 @@
+[Unit]
+Description=Two Rooms: the hall in Delve Town (posts letters, answers boards built by reply)
+After=tworooms-hall.service network-online.target
+Wants=network-online.target
+
+[Service]
+User=porch
+Group=porch
+EnvironmentFile=/etc/tworooms/env
+EnvironmentFile=/etc/tworooms/town.env
+WorkingDirectory=/var/lib/tworooms
+ExecStart=/opt/tworooms-hall/.venv/bin/python -m tworooms.town run --live --every 120
+Restart=on-failure
+RestartSec=60
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/tworooms
+
+[Install]
+WantedBy=multi-user.target
