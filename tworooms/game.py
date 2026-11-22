@@ -10,8 +10,9 @@ import time
 
 from . import config as C
 from . import db as D
-from .pictures import generate
-from .score import compare
+from .pictures import generate_with_kind
+from .reveal import loss
+from .score import readings
 from .shapes import ShapeError, describe, normalise
 from .words import Refused, check_message, count_words
 
@@ -40,12 +41,38 @@ def plural(n: int, word: str, many: str | None = None) -> str:
     return f"{n} {word if n == 1 else (many or word + 's')}"
 
 
+def pct(v) -> str:
+    return "?" if v is None else f"{round(v)}%"
+
+
+READINGS_EXPLAINED = {
+    "in_place": "Of all the cells painted on either board, the share painted the same colour, as built.",
+    "slid_to_fit": "The same, after sliding the whole build (up to 3 units any way) to where it matches best: "
+                   "a high one beside a low in-place means the right things in the wrong place.",
+}
+
+
 class Hall:
     def __init__(self, conn, notify=None, admin_key: str | None = None):
         self.db = conn
         self.notify = notify or (lambda match_id: None)
         self.admin_key = admin_key
         self._last_sweep = 0.0
+        self._backfill()
+
+    def _backfill(self):
+        """Builds submitted before the two readings existed get their "slid to fit" reading computed once."""
+        rows = self.all("SELECT b.*, COALESCE(l.picture_id, r.picture_id) AS pic FROM builds b "
+                        "LEFT JOIN letters l ON l.id=b.letter_id LEFT JOIN rounds r ON r.id=b.round_id "
+                        "WHERE b.status='submitted' AND b.slid IS NULL")
+        if not rows:
+            return
+        with D.tx(self.db):
+            for b in rows:
+                res = readings(self.shapes_of(b["pic"]), D.loads(b["shapes"]))
+                self.db.execute("UPDATE builds SET score=?, overlap=?, slid=?, slide_dx=?, slide_dy=? WHERE id=?",
+                                (res["cells_match"], res["in_place"], res["slid_to_fit"],
+                                 round(res["slide"]["right"] * 8), round(res["slide"]["up"] * 8), b["id"]))
 
     # ------------------------------------------------------------ helpers
 
@@ -131,13 +158,18 @@ class Hall:
         return D.loads(self.picture(picture_id)["shapes"])
 
     def new_picture(self, level: int):
-        while True:
+        """A fresh picture. At levels 6 and 8, not a template used by any of the last few pictures at that level."""
+        recent = {r["kind"] for r in self.all("SELECT kind FROM pictures WHERE level=? AND kind IS NOT NULL "
+                                              "ORDER BY id DESC LIMIT 6", level)}
+        for _ in range(12):
             seed = secrets.randbelow(2 ** 31)
-            if not self.one("SELECT 1 FROM pictures WHERE level=? AND seed=?", level, seed):
+            if self.one("SELECT 1 FROM pictures WHERE level=? AND seed=?", level, seed):
+                continue
+            shapes, kind = generate_with_kind(level, seed)
+            if kind is None or not any(k in recent for k in kind.split(" and ")):
                 break
-        shapes = generate(level, seed)
-        cur = self.db.execute("INSERT INTO pictures (level, seed, shapes, created) VALUES (?, ?, ?, ?)",
-                              (level, seed, D.dumps(shapes), D.now()))
+        cur = self.db.execute("INSERT INTO pictures (level, seed, shapes, kind, created) VALUES (?, ?, ?, ?, ?)",
+                              (level, seed, D.dumps(shapes), kind, D.now()))
         return self.picture(cur.lastrowid)
 
     def seen(self, player_id, picture_id) -> bool:
@@ -154,7 +186,7 @@ class Hall:
                WHERE p.level=? AND l.status != 'discarded' AND (l.status != 'draft' OR l.created > ?)
                GROUP BY p.id HAVING n < ? ORDER BY p.created""", level, fresh_draft, C.DESCRIBERS_PER_PICTURE)
         rows = [r for r in rows if not self.seen(me["id"], r["id"])]
-        if rows and random.random() < 0.5:
+        if rows and random.random() < 1 / 3:
             return self.picture(rows[0]["id"])
         return self.new_picture(level)
 
@@ -331,8 +363,9 @@ class Hall:
         # what to do next
         if mine and r["status"] == "draft":
             out["picture_url"] = f"/api/letters/{lid}/picture.png"
-            out["next"] = (f"Look at the picture (GET {out['picture_url']}); its frame says {r['word']}. Describe it in at "
-                           f"most {C.LEVELS[r['level']].budget} words, without numbers, then POST /api/letters/{lid}/send "
+            out["next"] = (f"Look at the picture (GET {out['picture_url']}); its frame says {r['word']}. Describe what is "
+                           f"visible in at most {C.LEVELS[r['level']].budget} words: count up to nine, halves, thirds and "
+                           f"quarters, no digits. Check it with POST /api/words, then POST /api/letters/{lid}/send "
                            "{\"text\": \"...\"}. One text; it cannot be edited after sending.")
         elif mine and r["status"] == "open":
             out["next"] = (f"Your letter is open: {plural(sub, 'build')} so far, {act} in progress. It closes after "
@@ -348,13 +381,24 @@ class Hall:
             out["next"] = "Make a callsign (POST /api/players {\"callsign\": \"...\"}) to build this letter."
         return out
 
+    @staticmethod
+    def _readings(row) -> dict:
+        return {"in_place": row["overlap"], "slid_to_fit": row["slid"],
+                "slide": {"right": (row["slide_dx"] or 0) / 8, "up": (row["slide_dy"] or 0) / 8}}
+
+    def _checks(self, b) -> list[dict]:
+        return [{"check": c["n"], "in_place": c["in_place"], "slid_to_fit": c["slid"], "at": iso(c["created"]),
+                 "board_url": f"/api/builds/{b['id']}/checks/{c['n']}.png"}
+                for c in self.all("SELECT * FROM checks WHERE build_id=? ORDER BY n", b["id"])]
+
     def _result_card(self, b, picture_id) -> dict:
+        shapes = D.loads(b["shapes"])
+        pic = self.shapes_of(picture_id)
         return {
-            "build": b["id"], "builder": self.callsign(b["builder_id"]), "score": b["score"], "overlap": b["overlap"],
-            "passed": b["score"] is not None and b["score"] >= C.PASS_SCORE,
-            "cells_differ": C.CELLS * C.CELLS - compare(self.shapes_of(picture_id), D.loads(b["shapes"]))["cells_right"],
+            "build": b["id"], "builder": self.callsign(b["builder_id"]), **self._readings(b),
+            "loss": loss(pic, shapes), "checks": self._checks(b), "details": {"cells_match": b["score"]},
             "board_url": f"/api/builds/{b['id']}/board.png", "diff_url": f"/api/builds/{b['id']}/diff.png",
-            "note": b["note"], "shapes": D.loads(b["shapes"]), "submitted": iso(b["submitted"]),
+            "note": b["note"], "shapes": shapes, "submitted": iso(b["submitted"]),
         }
 
     def take_letter(self, me, lid) -> dict:
@@ -443,22 +487,27 @@ class Hall:
         }
         if letter:
             out.update(letter=letter["id"], text=letter["text"], words=letter["words"], describer=self.callsign(letter["describer_id"]),
-                       letter_url=f"/letter/{letter['id']}")
+                       letter_url=f"/letter/{letter['id']}", checks=self._checks(b))
+            out["checks_left"] = C.MAX_CHECKS - len(out["checks"]) if b["status"] == "building" else 0
         else:
             out.update(match=rnd["match_id"], round=rnd["n"], round_id=rnd["id"], describer=self.callsign(rnd["describer_id"]))
         if b["status"] == "building":
             out["waiting_on"] = self.callsign(b["builder_id"]) if letter else self._round_waiting_on(rnd)
             where = "the letter" if letter else "the chat (GET /api/matches/" + rnd["match_id"] + ")"
+            checks = ""
+            if letter and out["checks_left"]:
+                checks = (f" You have {plural(out['checks_left'], 'check')} left: POST /api/builds/{b['id']}/check gives "
+                          "the two readings for the board as it stands, without showing the picture.")
             out["next"] = (
                 f"Read {where} and place shapes: POST /api/builds/{b['id']}/place with e.g. "
                 '{"shape": "rect", "color": "red", "x": 2, "y": 1, "w": 3, "h": 2}. x runs from the left edge, y from '
                 f"the bottom, the board is 10 by 10. Look at your board (GET {out['board_url']}), fix with undo or PUT "
                 f"/shapes, then POST /api/builds/{b['id']}/submit (optionally {{\"note\": \"what did not fit\"}})."
-            ) if not shapes else (
+            ) + checks if not shapes else (
                 f"{plural(len(shapes), 'shape')} placed. Compare your board (GET {out['board_url']}) with the words; "
                 f"place, undo or replace shapes, then POST /api/builds/{b['id']}/submit when it matches"
                 + (" (or ask the describer a question first: POST /api/matches/" + rnd["match_id"] + "/say)." if rnd else ".")
-            )
+            ) + checks
         else:
             out["waiting_on"] = None
         if b["status"] == "submitted":
@@ -468,15 +517,23 @@ class Hall:
     def _result(self, b) -> dict:
         letter, rnd = self._build_context(b)
         pic_id = letter["picture_id"] if letter else rnd["picture_id"]
+        pic, shapes = self.shapes_of(pic_id), D.loads(b["shapes"])
+        lost = loss(pic, shapes)
         res = {
-            "score": b["score"], "overlap": b["overlap"], "passed": b["score"] >= C.PASS_SCORE,
+            **self._readings(b),
+            "readings_explained": READINGS_EXPLAINED,
+            "details": {"cells_match": b["score"], "cells_differ": lost["cells_differ"] if lost else 0},
+            "loss": lost,
             "picture_url": f"/api/letters/{letter['id']}/picture.png" if letter else f"/api/rounds/{rnd['id']}/picture.png",
             "board_url": f"/api/builds/{b['id']}/board.png", "diff_url": f"/api/builds/{b['id']}/diff.png",
-            "picture_shapes": self.shapes_of(pic_id), "build_shapes": D.loads(b["shapes"]), "note": b["note"],
-            "cells_differ": C.CELLS * C.CELLS - compare(self.shapes_of(pic_id), D.loads(b["shapes"]))["cells_right"],
+            "picture_shapes": pic, "build_shapes": shapes, "note": b["note"],
             "page_url": f"/letter/{letter['id']}" if letter else f"/round/{rnd['id']}",
         }
-        res["picture_lines"] = [f"{i + 1}. {describe(s)}" for i, s in enumerate(res["picture_shapes"])]
+        if letter:
+            res["checks"] = self._checks(b)
+            res["others"] = self.one("SELECT COUNT(*) AS n FROM builds WHERE letter_id=? AND status='submitted' AND id!=?",
+                                     letter["id"], b["id"])["n"]
+        res["picture_lines"] = [f"{i + 1}. {describe(s)}" for i, s in enumerate(pic)]
         return res
 
     def _set_shapes(self, b, shapes):
@@ -497,7 +554,7 @@ class Hall:
         out = self.build_state(me, b["id"])
         out["placed"] = f"{len(shapes)}. {describe(s)}"
         if notes:
-            out["notes"] = notes
+            out["notes"] = [" ".join(notes)]
         return out
 
     def undo(self, me, bid) -> dict:
@@ -556,11 +613,13 @@ class Hall:
         letter, rnd = self._build_context(b)
         pic_id = letter["picture_id"] if letter else rnd["picture_id"]
         shapes = D.loads(b["shapes"])
-        res = compare(self.shapes_of(pic_id), shapes)
+        res = readings(self.shapes_of(pic_id), shapes)
         with D.tx(self.db):
             t = D.now()
-            self.db.execute("UPDATE builds SET status='submitted', note=?, note_words=?, score=?, overlap=?, submitted=?, "
-                            "updated=? WHERE id=?", (note, note_words, res["score"], res["overlap"], t, t, b["id"]))
+            self.db.execute("UPDATE builds SET status='submitted', note=?, note_words=?, score=?, overlap=?, slid=?, "
+                            "slide_dx=?, slide_dy=?, submitted=?, updated=? WHERE id=?",
+                            (note, note_words, res["cells_match"], res["in_place"], res["slid_to_fit"],
+                             round(res["slide"]["right"] * 8), round(res["slide"]["up"] * 8), t, t, b["id"]))
             self.mark_seen(me["id"], pic_id)
             if letter:
                 self.event("letter_built", {"letter": letter["id"], "build": b["id"], "builder": me["callsign"],
@@ -573,17 +632,55 @@ class Hall:
                 self._finish_round(rnd, res)
         out = self.build_state(me, b["id"])
         r = out["result"]
-        verdict = "It passes (90 or more)." if r["passed"] else "Under 90, so it does not pass."
+        said = f"In place {pct(r['in_place'])}, slid to fit {pct(r['slid_to_fit'])}."
         if letter:
-            out["next"] = (f"Scored {r['score']} ({r['overlap']} overlap of the coloured area). {verdict} Compare the picture "
-                           f"and your board at {r['page_url']}. Then build another letter (GET /api/letters) or describe "
-                           "a picture (POST /api/letters {\"level\": N}).")
+            others = ("You are its first builder." if not r["others"] else
+                      f"{plural(r['others'], 'other player')} built this letter too.")
+            out["next"] = (f"{said} {others} See the picture beside every board at {r['page_url']}. Then build another "
+                           "letter (GET /api/letters) or describe a picture (POST /api/letters {\"level\": N}).")
         else:
             m = self.one("SELECT * FROM matches WHERE id=?", rnd["match_id"])
-            out["next"] = (f"Scored {r['score']}. {verdict} "
-                           + ("The match is over." if m["status"] == "finished" else
-                              f"Round {rnd['n'] + 1} has started with roles swapped: GET /api/matches/{m['id']}."))
+            nxt = self._current_round(m)
+            if m["status"] == "finished" or not nxt:
+                then = "That was the last round."
+            else:
+                change = ("one level harder" if nxt["level"] > rnd["level"] else
+                          "one level easier" if nxt["level"] < rnd["level"] else "at the same level")
+                then = (f"Round {nxt['n']} has started {change}, with roles swapped: GET /api/matches/{m['id']}.")
+            out["next"] = f"{said} {then}"
         return out
+
+    def check(self, me, bid) -> dict:
+        """A letter's builder may ask twice for the two readings of the board as it stands, before the final submit."""
+        b = self.resolve_build(me, bid)
+        self._mine(me, b)
+        letter, rnd = self._build_context(b)
+        if not letter:
+            raise GameError(409, "Checks are for letters. In a live round, ask the describer instead.")
+        shapes = D.loads(b["shapes"])
+        if not shapes:
+            raise GameError(409, "The board is empty; place something before checking.")
+        done = self.one("SELECT COUNT(*) AS n FROM checks WHERE build_id=?", b["id"])["n"]
+        if done >= C.MAX_CHECKS:
+            raise GameError(409, f"You have used both checks. Submit when you are ready: POST /api/builds/{b['id']}/submit.")
+        res = readings(self.shapes_of(letter["picture_id"]), shapes)
+        with D.tx(self.db):
+            self.db.execute("INSERT INTO checks (build_id, n, shapes, in_place, slid, slide_dx, slide_dy, created) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                            (b["id"], done + 1, D.dumps(shapes), res["in_place"], res["slid_to_fit"],
+                             round(res["slide"]["right"] * 8), round(res["slide"]["up"] * 8), D.now()))
+            self.db.execute("UPDATE builds SET updated=? WHERE id=?", (D.now(), b["id"]))
+        left = C.MAX_CHECKS - done - 1
+        return {
+            "build": b["id"], "check": done + 1, "checks_left": left,
+            "in_place": res["in_place"], "slid_to_fit": res["slid_to_fit"], "readings_explained": READINGS_EXPLAINED,
+            "board_url": f"/api/builds/{b['id']}/checks/{done + 1}.png", "waiting_on": me["callsign"],
+            "next": (f"Check {done + 1}: in place {pct(res['in_place'])}, slid to fit {pct(res['slid_to_fit'])}. "
+                     + ("A high slid-to-fit with a low in-place means the right things in the wrong place. "
+                        if res["slid_to_fit"] - res["in_place"] >= 20 else "")
+                     + (f"{plural(left, 'check')} left. " if left else "No checks left. ")
+                     + f"Change the board if you like, then POST /api/builds/{b['id']}/submit."),
+        }
 
     # ------------------------------------------------------------ live matches
 
@@ -675,9 +772,11 @@ class Hall:
         self.db.execute("UPDATE rounds SET status='finished', finished=? WHERE id=?", (t, rnd["id"]))
         self.mark_seen(rnd["builder_id"], rnd["picture_id"])
         m = self.match(rnd["match_id"])
-        self.event("round_finished", {"round": rnd["n"], "round_id": rnd["id"], "score": res["score"],
-                                      "overlap": res["overlap"], "url": f"/round/{rnd['id']}"}, public=False, match_id=m["id"])
-        self.event("round_finished", {"round": rnd["id"], "match": m["id"], "level": rnd["level"], "score": res["score"],
+        self.event("round_finished", {"round": rnd["n"], "round_id": rnd["id"], "in_place": res["in_place"],
+                                      "slid_to_fit": res["slid_to_fit"], "url": f"/round/{rnd['id']}"},
+                   public=False, match_id=m["id"])
+        self.event("round_finished", {"round": rnd["id"], "match": m["id"], "level": rnd["level"],
+                                      "in_place": res["in_place"], "slid_to_fit": res["slid_to_fit"],
                                       "describer": self.callsign(rnd["describer_id"]), "builder": self.callsign(rnd["builder_id"]),
                                       "url": f"/round/{rnd['id']}"}, public=True)
         if rnd["n"] >= m["rounds"]:
@@ -685,9 +784,9 @@ class Hall:
             self.event("match_finished", {"match": m["id"]}, public=False, match_id=m["id"])
             return
         level = rnd["level"]
-        if res["score"] >= C.LEVEL_UP_AT:
+        if res["in_place"] >= C.LEVEL_UP_AT:
             level = min(8, level + 1)
-        elif res["score"] < C.LEVEL_DOWN_BELOW:
+        elif res["in_place"] < C.LEVEL_DOWN_BELOW:
             level = max(1, level - 1)
         self._start_round(m, rnd["n"] + 1, level, describer=rnd["builder_id"], builder=rnd["describer_id"])
 
@@ -717,7 +816,7 @@ class Hall:
         budget_left = None
         if role == "describer":
             used = self.one("SELECT COALESCE(SUM(words), 0) AS n FROM messages WHERE round_id=? AND role='describer'", rnd["id"])["n"]
-            budget_left = C.LEVELS[rnd["level"]].budget - used
+            budget_left = C.live_budget(rnd["level"]) - used
             if budget_left <= 0:
                 raise GameError(422, "Not sent: you have used this round's whole word budget. The builder has to "
                                      "work with what you said and submit.")
@@ -792,7 +891,7 @@ class Hall:
             "finished_rounds": [{
                 "round": r["id"], "n": r["n"], **level_info(r["level"]), "word": r["word"],
                 "describer": self.callsign(r["describer_id"]), "builder": self.callsign(r["builder_id"]),
-                "score": self.one("SELECT score FROM builds WHERE id=?", r["build_id"])["score"], "url": f"/round/{r['id']}",
+                **self._readings(self.one("SELECT * FROM builds WHERE id=?", r["build_id"])), "url": f"/round/{r['id']}",
                 "build": r["build_id"],
             } for r in rounds_done if not r["hidden"] or is_player],
         }
@@ -809,7 +908,8 @@ class Hall:
             cur = {
                 "round_id": rnd["id"], "n": rnd["n"], **level_info(rnd["level"]),
                 "describer": self.callsign(rnd["describer_id"]), "builder": self.callsign(rnd["builder_id"]),
-                "describer_words_used": used, "describer_words_left": C.LEVELS[rnd["level"]].budget - used,
+                "budget": C.live_budget(rnd["level"]),
+                "describer_words_used": used, "describer_words_left": C.live_budget(rnd["level"]) - used,
                 "shapes_on_board": len(D.loads(b["shapes"])) if (role == "builder") else None,
             }
             if is_player:
@@ -886,7 +986,7 @@ class Hall:
             return f"The match is over; every round is at /m/{mid}. Start another: POST /api/seat or POST /api/matches."
         if not is_player:
             return f"Round {rnd['n'] if rnd else '?'} is being played; its picture and chat are shown once it is submitted."
-        words_left = C.LEVELS[rnd["level"]].budget - self.one(
+        words_left = C.live_budget(rnd["level"]) - self.one(
             "SELECT COALESCE(SUM(words), 0) AS n FROM messages WHERE round_id=? AND role='describer'", rnd["id"])["n"]
         wait = f" When you have nothing to add, GET /api/matches/{mid}?since=<last_event>&wait=60 waits for the next move."
         if role == "describer":
@@ -982,16 +1082,17 @@ class Hall:
             if before:
                 sql += " AND closed<?"; args.append(before)
             for r in self.all(sql + " ORDER BY closed DESC LIMIT ?", *args, limit):
-                bs = self.all("SELECT * FROM builds WHERE letter_id=? AND status='submitted' ORDER BY score DESC", r["id"])
+                bs = self.all("SELECT * FROM builds WHERE letter_id=? AND status='submitted' ORDER BY overlap DESC", r["id"])
                 items.append({
                     "kind": "letter", "id": r["id"], "t": r["closed"], "when": iso(r["closed"]), **level_info(r["level"]),
                     "describer": self.callsign(r["describer_id"]), "builders": [self.callsign(b["builder_id"]) for b in bs],
-                    "scores": [b["score"] for b in bs], "words": r["words"], "text": r["text"],
+                    "readings": [self._readings(b) for b in bs], "words": r["words"], "text": r["text"],
                     "picture_url": f"/api/letters/{r['id']}/picture.png",
                     "board_url": f"/api/builds/{bs[0]['id']}/board.png" if bs else None, "url": f"/letter/{r['id']}",
                 })
         if mode in (None, "live"):
-            sql = ("SELECT r.*, b.score AS score FROM rounds r JOIN builds b ON b.id=r.build_id JOIN matches m ON m.id=r.match_id "
+            sql = ("SELECT r.*, b.overlap AS overlap, b.slid AS slid, b.slide_dx AS slide_dx, b.slide_dy AS slide_dy "
+                   "FROM rounds r JOIN builds b ON b.id=r.build_id JOIN matches m ON m.id=r.match_id "
                    "WHERE r.status='finished' AND r.hidden=0 AND m.hidden=0")
             args = []
             if level:
@@ -1002,7 +1103,7 @@ class Hall:
                 items.append({
                     "kind": "round", "id": r["id"], "t": r["finished"], "when": iso(r["finished"]), **level_info(r["level"]),
                     "describer": self.callsign(r["describer_id"]), "builders": [self.callsign(r["builder_id"])],
-                    "scores": [r["score"]], "picture_url": f"/api/rounds/{r['id']}/picture.png",
+                    "readings": [self._readings(r)], "picture_url": f"/api/rounds/{r['id']}/picture.png",
                     "board_url": f"/api/builds/{r['build_id']}/board.png", "url": f"/round/{r['id']}", "match": r["match_id"],
                     "words": self.one("SELECT COALESCE(SUM(words),0) AS n FROM messages WHERE round_id=? AND role='describer'", r["id"])["n"],
                 })
@@ -1019,7 +1120,8 @@ class Hall:
         builds = self.all("SELECT b.*, l.status AS lstatus, l.level AS level, l.describer_id AS did FROM builds b "
                           "JOIN letters l ON l.id=b.letter_id WHERE b.builder_id=? AND b.status='submitted' AND l.hidden=0 "
                           "ORDER BY b.submitted DESC", pid)
-        rounds = self.all("SELECT r.*, b.score AS score FROM rounds r JOIN builds b ON b.id=r.build_id "
+        rounds = self.all("SELECT r.*, b.overlap AS overlap, b.slid AS slid, b.slide_dx AS slide_dx, b.slide_dy AS slide_dy "
+                          "FROM rounds r JOIN builds b ON b.id=r.build_id "
                           "WHERE (r.describer_id=? OR r.builder_id=?) AND r.status='finished' AND r.hidden=0 "
                           "ORDER BY r.finished DESC", pid, pid)
         partners = {}
@@ -1042,12 +1144,12 @@ class Hall:
             "letters": [{**self._letter_card(l), "status": l["status"]} for l in letters],
             "builds": [{"build": b["id"], "letter": b["letter_id"], **level_info(b["level"]),
                         "describer": self.callsign(b["did"]),
-                        "score": b["score"] if b["lstatus"] == "closed" else None,
+                        **(self._readings(b) if b["lstatus"] == "closed" else {"in_place": None, "slid_to_fit": None}),
                         "board_url": f"/api/builds/{b['id']}/board.png" if b["lstatus"] == "closed" else None,
                         "url": f"/letter/{b['letter_id']}"} for b in builds],
             "live_rounds": [{"round": r["id"], **level_info(r["level"]), "role": "describer" if r["describer_id"] == pid else "builder",
                              "with": self.callsign(r["builder_id"] if r["describer_id"] == pid else r["describer_id"]),
-                             "score": r["score"], "url": f"/round/{r['id']}"} for r in rounds],
+                             **self._readings(r), "url": f"/round/{r['id']}"} for r in rounds],
             "played_with": sorted(({"callsign": k, "how": sorted(v)} for k, v in partners.items()), key=lambda x: x["callsign"].lower()),
         }
 

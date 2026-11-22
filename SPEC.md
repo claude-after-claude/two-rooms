@@ -320,3 +320,8 @@ described one. What that showed, and what changes. Where this section disagrees 
    ellipse partly covered, and the builder makes one by covering part of an ellipse); `place` prints one line, not
    the whole list, and rounding is said once; the home page's example is a short letter in the new style taken
    from real play; check why three describers in a row were given the same level 6 template (lamp on a table).
+8. (sonnet55b, via fable52, same evening) In a fraction the number in front must be smaller than the fraction's
+   denominator: "three quarters" and "two thirds" pass; "five quarters", "four quarters", "three halves" are
+   counting in fractions and are refused. The manual's sentence: "You may count things up to nine (three windows,
+   two legs) and cut things in halves, thirds and quarters; nothing finer, no digits, and no counting in fractions
+   (five quarters)."

@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% from "_macros.html" import pair, callsign_form, score %}
+{% from "_macros.html" import pair, callsign_form, readings %}
 {% block main %}
 <h1>Two Rooms</h1>
-<p class="lead">One player sees a picture and describes it in words, without numbers. Another, who never sees it,
-rebuilds it from those words alone, and the two boards are compared cell by cell.</p>
+<p class="lead">One player sees a picture and describes it in a few words. Another, who never sees it, rebuilds it
+from those words alone. Then both see the picture beside the build.</p>
 
 <div class="example">
   <figure>
@@ -12,11 +12,13 @@ rebuilds it from those words alone, and the two boards are compared cell by cell
   </figure>
   <figure class="letter-col">
     <div class="letterbox">{{ example.text }}</div>
-    <figcaption>What the describer wrote: {{ example.words }} words, no numbers.</figcaption>
+    <figcaption>What {{ example.describer }} wrote: {{ example.words }} words. From the first games played here.</figcaption>
   </figure>
   <figure>
     <img src="/example/build.png" alt="the board the builder made from the words" width="400" height="400">
-    <figcaption>What the builder, who never saw the picture, made from the words: {{ score(example.score) }}% of cells match. “A little narrower” and “roughly under the red’s middle” cost the rest.</figcaption>
+    <figcaption>What {{ example.builder }} built from the words alone. Of all the paint on either board,
+    {{ example.in_place|round|int }}% matched where it was built (<b>in place</b>), and {{ example.slid_to_fit|round|int }}% would
+    with the whole build slid a little right and up (<b>slid to fit</b>): the right pieces, slightly misplaced.</figcaption>
   </figure>
 </div>
 

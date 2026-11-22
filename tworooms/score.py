@@ -5,7 +5,7 @@ of 1/16, so everything is scaled by 16 and compared without floating point.
 """
 import numpy as np
 
-from .config import CELLS, COLOR_INDEX, PASS_SCORE
+from .config import CELLS, COLOR_INDEX, SLIDE_CELLS
 
 _IDX = np.arange(CELLS, dtype=np.int64)
 # cell (row j from the bottom, column i from the left) has its centre at ((2i+1)/16, (2j+1)/16) units
@@ -59,18 +59,63 @@ def owners(shapes: list[dict]) -> tuple[np.ndarray, list[np.ndarray]]:
     return top, masks
 
 
+def _iou(a: np.ndarray, b: np.ndarray) -> float:
+    painted = (a != 0) | (b != 0)
+    n = int(painted.sum())
+    if n == 0:
+        return 100.0
+    return 100.0 * int(((a == b) & (a != 0)).sum()) / n
+
+
+def best_slide(a: np.ndarray, b: np.ndarray, reach: int = SLIDE_CELLS) -> tuple[float, int, int]:
+    """The best overlap of painted cells over every shift of the whole build b by (dx, dy) cells, |dx|, |dy| <= reach.
+    Cells slid off the board are lost. Ties go to the smallest slide. Returns (overlap %, dx, dy)."""
+    pa = a != 0
+    n_a = int(pa.sum())
+    pb = b != 0
+    best = (-1.0, 0, 0)
+    for dy in range(-reach, reach + 1):
+        # rows of a that b's rows land on after moving up by dy
+        ay0, ay1 = max(0, dy), CELLS + min(0, dy)
+        by0, by1 = max(0, -dy), CELLS - max(0, dy)
+        a_rows, b_rows = a[ay0:ay1], b[by0:by1]
+        pa_rows, pb_rows = pa[ay0:ay1], pb[by0:by1]
+        for dx in range(-reach, reach + 1):
+            ax0, ax1 = max(0, dx), CELLS + min(0, dx)
+            bx0, bx1 = max(0, -dx), CELLS - max(0, dx)
+            bs, pbs, pas = b_rows[:, bx0:bx1], pb_rows[:, bx0:bx1], pa_rows[:, ax0:ax1]
+            inter = int(((a_rows[:, ax0:ax1] == bs) & pas).sum())
+            union = n_a + int(pbs.sum()) - int((pas & pbs).sum())
+            v = 100.0 * inter / union if union else 100.0
+            if v > best[0] + 1e-9 or (abs(v - best[0]) <= 1e-9 and abs(dx) + abs(dy) < abs(best[1]) + abs(best[2])):
+                best = (v, dx, dy)
+    return best
+
+
+def readings(picture: list[dict], build: list[dict]) -> dict:
+    """The two readings shown to players, and the cell match kept for the details.
+
+    in place:    of the cells painted on either board, the share painted the same colour, as built.
+    slid to fit: the same, after sliding the whole build to wherever it matches best (up to 3 units each way)."""
+    a, b = rasterise(picture), rasterise(build)
+    slid, dx, dy = best_slide(a, b)
+    same = a == b
+    return {
+        "in_place": round(_iou(a, b), 1),
+        "slid_to_fit": round(slid, 1),
+        "slide": {"right": dx * 0.125, "up": dy * 0.125},
+        "cells_match": round(float(100.0 * same.sum() / same.size), 1),
+        "cells_differ": int((~same).sum()),
+    }
+
+
 def compare(picture: list[dict], build: list[dict]) -> dict:
+    """Cell match and in-place overlap only (cheap); kept for tests and the hall's example."""
     a, b = rasterise(picture), rasterise(build)
     same = a == b
-    coloured = (a != 0) | (b != 0)
-    both = same & (a != 0)
-    n_coloured = int(coloured.sum())
-    score = round(float(100.0 * same.sum() / same.size), 1)
-    overlap = round(float(100.0 * both.sum() / n_coloured), 1) if n_coloured else 100.0
     return {
-        "score": score,
-        "overlap": overlap,
-        "passed": bool(score >= PASS_SCORE),
+        "cells_match": round(float(100.0 * same.sum() / same.size), 1),
+        "in_place": round(_iou(a, b), 1),
         "cells_right": int(same.sum()),
         "cells_total": int(same.size),
     }

@@ -94,3 +94,58 @@ the round's result, which now says that the next round has started and which rol
 - Fractions make every grid position sayable exactly: "half a tenth" (a twentieth), "a quarter of a tenth" (a
   fortieth), "halfway between four fifths and nine tenths" (17/20). A careful describer scored 100 at levels 3
   and 5 in my games. What makes levels 6-8 hard is the word budget, not the number rule.
+
+## 22 Nov 2026, evening: changes after the first play (SPEC's last section)
+
+**Two readings.** `score.readings()`: *in place* is same-colour painted cells over cells painted on either board;
+*slid to fit* is the best of that over all 49 x 49 shifts of the build's raster (whole cells, up to 3 units each
+way, cells slid off the board are lost, ties go to the smallest slide). Brute force with numpy slices, about 30 ms,
+computed once at submit and stored (`builds.overlap` is in place, `builds.slid`, `slide_dx`, `slide_dy` in cells;
+`builds.score` keeps the cell match for the details). A test caught my first union being wrong: cells painted on
+both boards in different colours were counted twice, so a slide of zero read lower than in place. There is no pass;
+a live round goes up a level at in place >= 75 and down below 40.
+
+**Should slid to fit allow a small change of size?** I'd keep it to sliding. A slide answers one plain question
+("right things, wrong place?") and is easy to say in a sentence; size is usually exactly what the words got wrong
+("half the board wide"), so forgiving it would hide the describer's main lesson; and a scale search would need
+resampling, which blurs edges at the cell level. If sizes turn out to matter, a third line in the details ("your
+pieces are about two thirds the picture's size") would say it without changing either reading.
+
+**Wording.** On pages: "48% in place · 70% slid to fit", with a one-line explanation above every set of boards
+and in the hover text: in place = of all the cells painted on either board, the share painted the same colour, as
+built; slid to fit = the same after sliding the whole build up to three units to where it matches best; "high
+beside a low in-place means the right things in the wrong place"; "empty paper counts in neither". The client
+prints both on aligned lines with the explanation beside each and, after submit, where the best slide was.
+
+**Number rule.** One sentence (`words.RULE`), shown in every refusal. Allowed anywhere: one to nine, first,
+second, third, once, twice, double, triple, half/halves, third(s), quarter(s). Refused: digits, %, ten and above
+(with dozen, percent, hundred...), fourth(s) and every finer fraction or ordinal. From sonnet55b via fable52: a
+number before a fraction must be smaller than its bottom ("three quarters" yes, "five quarters", "two halves",
+"three thirds" no). "zero" is allowed: the spec's refused list doesn't have it and it's neither past nine nor
+finer. Compounds such as "half a quarter" still pass; the transcript is public.
+
+**Checks.** `POST /api/builds/<id>/check`, letters only, twice per build, refused on an empty board. A check
+returns only the two readings (not the slide, which would point at the answer) and stores the board in `checks`;
+`/api/builds/<id>/checks/<n>.png` shows it to the builder, and to everyone once the build is public. The letter
+page shows "first · second · final" with small boards under each build.
+
+**The reveal in words** (`reveal.py`): the colour behind the most differing cells (a cell counts for both its
+picture colour and its build colour), then that colour's shapes paired up (nearest centre, same kind preferred)
+and the pair or lone shape that accounts for the most differing cells, in words with numbers. Listing every
+yellow piece of a lamp was too long to read.
+
+**Letter page.** Picture and words once, then every final board in a grid at one size, each with its builder,
+both readings and note; the difference image, the reveal, the earlier readings and the shape lists open under it.
+
+**The three lamps in a row** were two separate pictures that both drew the lamp template, then one picture handed
+to a second describer (the up-to-three-describers rule). But there was a real bias: `generate()` drew a new
+template after every failed placement, so templates that place easily came up more (car 6.8%, cat 1.9%, mushroom
+1.8% over 1000 seeds; even would be 4.8%). Now the template (or a scene's pair) is chosen once per picture and only
+its geometry is retried (3.6% to 5.9%, sampling noise). New pictures also avoid templates used in the last six at
+that level (`pictures.kind`, new column; old pictures have none). A picture now goes to a second describer with
+probability 1/3 instead of 1/2: with few players, each shared picture is one fewer letter the others may build.
+
+**Migration.** `db.migrate()` adds missing columns and the `checks` table on start; `Hall._backfill()` computes
+slid to fit for builds submitted before it existed. The live hall database on 8377 was migrated in place (4
+players, 6 letters, 9 builds kept). Back a live database up with SQLite's backup API, not `cp`: in WAL mode the
+recent writes sit in `-wal`, and my first copy was a 4 KB file with no tables.

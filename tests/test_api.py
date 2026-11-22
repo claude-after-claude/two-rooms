@@ -59,8 +59,10 @@ def test_whole_letters_game(server):
     perfect = picture_shapes(app, lid)
     assert bob.put(f"/api/builds/{bid}/shapes", perfect)["count"] == len(perfect)
     r = bob.post(f"/api/builds/{bid}/submit", {"note": "the blue one could have been lower"})
-    assert r["result"]["score"] == 100.0 and r["result"]["passed"] and r["result"]["picture_shapes"] == perfect
-    assert r["waiting_on"] is None and "Scored 100.0" in r["next"]
+    res = r["result"]
+    assert res["in_place"] == 100.0 and res["slid_to_fit"] == 100.0 and res["picture_shapes"] == perfect
+    assert "passed" not in res and "score" not in res and res["loss"] is None and res["others"] == 0
+    assert r["waiting_on"] is None and "In place 100%, slid to fit 100%" in r["next"]
     assert bob.status(f"/api/letters/{lid}/picture.png") == 200
     assert bob.post(f"/api/builds/{bid}/place", {"shape": "rect", "color": "red", "x": 1, "y": 1, "w": 1, "h": 1},
                     expect=409)["error"]
@@ -73,7 +75,8 @@ def test_whole_letters_game(server):
     c = carol.post(f"/api/letters/{lid}/builds")
     carol.post(f"/api/builds/{c['build']}/place", {"shape": "rect", "color": "green", "x": 0, "y": 0, "w": 10, "h": 10})
     low = carol.post(f"/api/builds/{c['build']}/submit")
-    assert low["result"]["score"] < 90 and not low["result"]["passed"]
+    assert low["result"]["in_place"] < 50 and low["result"]["others"] == 1
+    assert low["result"]["loss"]["colour"] == "green" and "green" in low["result"]["loss"]["sentence"]
 
     alice.post(f"/api/letters/{lid}/close")
     closed = anon.get(f"/api/letters/{lid}")
@@ -206,9 +209,10 @@ def test_live_match_with_long_poll(server):
     assert "Waiting on bob" in a["waiting_sentence"]
 
     # number rule and budget in live chat
-    assert "counting word" in bob.post(f"/api/matches/{mid}/say", {"text": "it is twelve wide"}, expect=422)["error"]
+    assert "past nine" in bob.post(f"/api/matches/{mid}/say", {"text": "it is twelve wide"}, expect=422)["error"]
+    assert st["current"]["budget"] == 2 * LEVELS[1].budget
     assert bob.get(f"/api/matches/{mid}")["current"]["describer_words_used"] == 0
-    assert bob.post(f"/api/matches/{mid}/say", {"text": "x " * 61}, expect=422)["error"]
+    assert bob.post(f"/api/matches/{mid}/say", {"text": "x " * (2 * LEVELS[1].budget + 1)}, expect=422)["error"]
 
     # the builder long-polls; the describer speaks
     last = alice.get(f"/api/matches/{mid}")["last_event"]
@@ -238,13 +242,14 @@ def test_live_match_with_long_poll(server):
     r1 = r["result"]
     st = alice.get(f"/api/matches/{mid}")
     assert st["round"] == 2 and st["you"]["role"] == "describer" and len(st["finished_rounds"]) == 1
-    expected_level = 2 if r1["score"] >= 90 else (1 if r1["score"] < 70 else 1)
+    expected_level = 2 if r1["in_place"] >= 75 else 1
     assert st["current"]["level"] == expected_level
     assert st["current"]["word"] != st["finished_rounds"][0]["word"]
 
     rid1 = st["finished_rounds"][0]["round"]
     pub = anon.get(f"/api/rounds/{rid1}")
-    assert pub["chat"][0]["text"].startswith("Two blocks") and pub["result"]["score"] == r1["score"]
+    assert pub["chat"][0]["text"].startswith("Two blocks") and pub["result"]["in_place"] == r1["in_place"]
+    assert "checks" not in pub["result"]
     assert pub["describer_words"] == 16 and pub["builder_words"] == 10
 
     bob.post(f"/api/builds/{mid}/submit")
@@ -310,9 +315,9 @@ def test_rate_limit_on_new_callsigns(tmp_path):
 
 def test_word_check_spends_nothing(server):
     base, app = server
-    r = httpx.post(base + "/api/words", json={"text": "a red block, four fifths across", "budget": 6})
+    r = httpx.post(base + "/api/words", json={"text": "a red block, three quarters across", "budget": 6})
     assert r.json() == {"words": 6, "ok": True, "next": "It would be accepted."}
-    r = httpx.post(base + "/api/words", json={"text": "a red block, four fifths across", "budget": 5})
+    r = httpx.post(base + "/api/words", json={"text": "a red block, three quarters across", "budget": 5})
     assert not r.json()["ok"] and "5 left" in r.json()["error"]
     r = httpx.post(base + "/api/words", json={"text": "eleven blocks"})
     assert not r.json()["ok"] and r.json()["error"].startswith("Would be refused")
@@ -356,3 +361,76 @@ def test_stale_board_waits_on_the_builder(server):
     hall.db.execute("UPDATE messages SET created=created-90000")
     st = a.get(f"/api/matches/{m}")
     assert st["waiting_on"] == "alice" and "submit" in st["waiting_sentence"]
+
+    r = httpx.post(base + "/api/words", json={"text": "five quarters of it"})
+    assert not r.json()["ok"] and "counting in fractions" in r.json()["error"]
+
+
+def test_two_checks_before_submit(server):
+    base, app = server
+    a, b, c = (Client.new(base, n) for n in ("alice", "bob", "carol"))
+    lid = a.post("/api/letters", {"level": 2})["letter"]
+    a.post(f"/api/letters/{lid}/send", {"text": "blocks"})
+    t = b.post(f"/api/letters/{lid}/builds")
+    bid = t["build"]
+    assert t["checks_left"] == 2 and "check" in t["next"]
+    assert "empty" in b.post(f"/api/builds/{bid}/check", expect=409)["error"]
+    truth = D.loads(app.state.hall.picture(app.state.hall.letter(lid)["picture_id"])["shapes"])
+    moved = [dict(s, x=s["x"] + 0.5) if s["x"] + s["w"] <= 9.5 else s for s in truth]
+    b.put(f"/api/builds/{bid}/shapes", moved[:2])
+    c1 = b.post(f"/api/builds/{bid}/check")
+    assert c1["check"] == 1 and c1["checks_left"] == 1 and set(c1) >= {"in_place", "slid_to_fit"}
+    assert "picture" not in str(sorted(c1)) and "slide" not in c1, "a check shows only the two readings"
+    b.put(f"/api/builds/{bid}/shapes", truth)
+    c2 = b.post(f"/api/builds/{bid}/check")
+    assert c2["in_place"] == 100.0 and c2["checks_left"] == 0
+    assert "both checks" in b.post(f"/api/builds/{bid}/check", expect=409)["error"]
+    assert b.status(f"/api/builds/{bid}/checks/1.png") == 200
+    assert c.status(f"/api/builds/{bid}/checks/1.png") == 403
+    r = b.post(f"/api/builds/{bid}/submit")["result"]
+    assert [x["check"] for x in r["checks"]] == [1, 2] and r["checks"][0]["in_place"] == c1["in_place"]
+    view = a.get(f"/api/letters/{lid}")
+    assert view["results"][0]["checks"][1]["in_place"] == 100.0
+    a.post(f"/api/letters/{lid}/close")
+    assert c.status(f"/api/builds/{bid}/checks/1.png") == 200
+
+
+def test_no_checks_in_live_rounds(server):
+    base, app = server
+    a, b = Client.new(base, "alice"), Client.new(base, "bob")
+    m = a.post("/api/matches", {"open": False})["match"]
+    b.post(f"/api/matches/{m}/join")
+    a.post(f"/api/builds/{m}/place", {"shape": "rect", "color": "red", "x": 1, "y": 1, "w": 2, "h": 2})
+    assert "live round" in a.post(f"/api/builds/{m}/check", expect=409)["error"]
+
+
+def test_old_database_is_migrated_and_backfilled(tmp_path):
+    """A database from before the two readings gets the new columns and its builds get "slid to fit"."""
+    import sqlite3
+    from tworooms.game import Hall
+    path = tmp_path / "old.sqlite"
+    with serve(tmp_path) as (base, app):
+        pass
+    conn = D.connect(tmp_path / "t.sqlite")
+    hall = Hall(conn)
+    a = hall.create_player("alice")
+    b = hall.create_player("bob")
+    pa, pb = hall.player_by_callsign("alice"), hall.player_by_callsign("bob")
+    lid = hall.create_letter(pa, 1)["letter"]
+    hall.send_letter(pa, lid, "two blocks")
+    bid = hall.take_letter(pb, lid)["build"]
+    truth = hall.shapes_of(hall.letter(lid)["picture_id"])
+    hall.put_shapes(pb, bid, [dict(s, x=s["x"] + 1) if s["x"] + s["w"] <= 9 else dict(s, x=s["x"] - 1) for s in truth])
+    hall.submit(pb, bid)
+    # make it look like an old database: drop what the migration adds
+    conn.execute("ALTER TABLE builds DROP COLUMN slid")
+    conn.execute("ALTER TABLE builds DROP COLUMN slide_dx")
+    conn.execute("ALTER TABLE builds DROP COLUMN slide_dy")
+    conn.execute("ALTER TABLE pictures DROP COLUMN kind")
+    conn.execute("DROP TABLE checks")
+    conn.close()
+    hall2 = Hall(D.connect(tmp_path / "t.sqlite"))
+    row = hall2.one("SELECT * FROM builds WHERE id=?", bid)
+    assert row["slid"] is not None and row["slid"] >= row["overlap"]
+    r = hall2.letter_view(None, lid) if False else hall2.build_state(pb, bid)["result"]
+    assert r["slid_to_fit"] == row["slid"] and r["checks"] == []

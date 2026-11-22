@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import lvl, score, shapelines %}
+{% from "_macros.html" import lvl, readings, explain, shapelines %}
 {% block title %}Letter {{ l.letter }} by {{ l.describer }} · Two Rooms{% endblock %}
 {% block description %}{{ (l.text or '')[:180] }}{% endblock %}
 {% block og %}
@@ -10,61 +10,73 @@
 {% endblock %}
 {% block main %}
 <h1>A letter by <a href="/p/{{ l.describer }}">{{ l.describer }}</a></h1>
-<p class="muted">{{ lvl(l.level, l.level_name) }} · word {{ l.word }} · {{ l.words }} of {{ l.budget }} words ·
+<p class="muted">{{ lvl(l.level, l.level_name) }} · word {{ l.word }} · {{ l.words }} words ·
 {% if l.status == 'open' %}open, {{ l.builds_submitted }} built{% if l.builds_in_progress %}, {{ l.builds_in_progress }} building{% endif %}
 {% else %}{{ l.close_reason or 'closed' }}, {{ l.builds_submitted }} built{% endif %}</p>
 
-{% if l.picture_url %}
-<div class="two">
+<div class="picture-and-words">
+  {% if l.picture_url %}
   <figure style="margin:0"><img src="{{ l.picture_url }}" alt="the picture" width="800" height="800">
     <figcaption>The picture {{ l.describer }} saw.</figcaption></figure>
+  {% endif %}
   <div>
     <div class="letterbox">{{ l.text }}</div>
-    <p class="small muted">{{ l.words }} words.</p>
+    <p class="small muted">{{ l.words }} words.{% if not l.picture_url %} The picture stays hidden until the letter
+    closes (after five builds or seven days); those who build it see it as soon as they submit.{% endif %}</p>
     {% if l.same_picture %}
     <p>The same picture, in other words:
     {% for o in l.same_picture %}<a href="{{ o.url }}">{{ o.describer }}'s letter</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>
     {% endif %}
+    {% if l.your_build and l.your_build.status == 'building' %}
+    <p><a class="btn" href="/build/{{ l.your_build.build }}">Go back to your board</a></p>
+    {% elif can_build %}
+    <form method="post" action="/build/{{ l.letter }}/take"><button>Build this</button>
+    <span class="small muted">You get an empty board and these words; you see the picture after you submit.</span></form>
+    {% elif not me and l.status == 'open' %}
+    <p><a class="btn" href="/start?next=/letter/{{ l.letter }}">Pick a callsign to build this</a></p>
+    {% elif why and l.status == 'open' and not mine %}
+    <p class="muted small">{{ why }}</p>
+    {% endif %}
     {% if mine and l.status == 'open' %}
     <form method="post" action="/letter/{{ l.letter }}/close"><button class="light small">Close this letter now</button>
-    <span class="small muted">Its picture and all builds become public.</span></form>
+    <span class="small muted">Its picture and all boards become public.</span></form>
     {% endif %}
   </div>
 </div>
-{% else %}
-<div class="letterbox" style="max-width:40em">{{ l.text }}</div>
-<p class="small muted" style="margin-top:.6em">The picture stays hidden until the letter closes (after five builds or seven days).
-Those who build it see it as soon as they submit.</p>
-{% endif %}
-
-{% if l.your_build and l.your_build.status == 'building' %}
-<p><a class="btn" href="/build/{{ l.your_build.build }}">Go back to your board</a></p>
-{% elif can_build %}
-<form method="post" action="/build/{{ l.letter }}/take"><button>Build this</button>
-<span class="small muted">You'll get an empty board and these words; you'll see the picture after you submit.</span></form>
-{% elif not me and l.status == 'open' %}
-<p><a class="btn" href="/start?next=/letter/{{ l.letter }}">Pick a callsign to build this</a></p>
-{% elif why and l.status == 'open' and not mine %}
-<p class="muted small">{{ why }}</p>
-{% endif %}
 
 {% if l.results is defined %}
-<h2>{{ l.results|length }} build{{ '' if l.results|length == 1 else 's' }}</h2>
-{% if not l.results %}<p class="muted">Nobody has submitted a build yet.</p>{% endif %}
+<h2 id="boards">{{ l.results|length }} board{{ '' if l.results|length == 1 else 's' }} built from these words</h2>
+{% if not l.results %}<p class="muted">Nobody has submitted a build yet.</p>{% else %}{{ explain() }}{% endif %}
+<div class="boards">
 {% for r in l.results %}
-<div class="build-row" id="b-{{ r.build }}">
-  <h3><span><a href="/p/{{ r.builder }}">{{ r.builder }}</a> built it</span> <span>{{ score(r.score) }} <span class="small muted">· overlap {{ '%.1f'|format(r.overlap) }}</span></span></h3>
-  <div class="result">
-    <figure><img src="{{ l.picture_url }}?size=400" alt="the picture" loading="lazy"><figcaption>picture</figcaption></figure>
-    <figure><img src="{{ r.board_url }}?framed=1&size=400" alt="{{ r.builder }}'s board" loading="lazy"><figcaption>{{ r.builder }}'s board</figcaption></figure>
-    <figure><img src="{{ r.diff_url }}?framed=1&size=400" alt="cells that differ" loading="lazy"><figcaption>{{ r.cells_differ }} of 6,400 cells differ (magenta)</figcaption></figure>
+  <div class="boardcard" id="b-{{ r.build }}">
+    <img src="{{ r.board_url }}?framed=1&size=400" alt="{{ r.builder }}'s board" loading="lazy" width="400" height="400">
+    <div class="who"><a href="/p/{{ r.builder }}">{{ r.builder }}</a> {{ readings(r) }}</div>
+    {% if r.note %}<p class="note"><b>Note:</b> {{ r.note }}</p>{% endif %}
+    <details {% if built == r.build %}open{% endif %}><summary>the difference{% if r.checks %} and {{ r.checks|length }} earlier reading{{ '' if r.checks|length == 1 else 's' }}{% endif %}</summary>
+      <div class="inner">
+        <img src="{{ r.diff_url }}?framed=1&size=400" alt="cells that differ, in magenta" loading="lazy" width="400" height="400">
+        <p class="small muted">Magenta: the cells where this board and the picture differ.
+        {% if r.slide.right or r.slide.up %}It matched best slid {% if r.slide.right %}{{ '%g'|format(r.slide.right|abs) }} {{ 'right' if r.slide.right > 0 else 'left' }}{% endif %}{% if r.slide.right and r.slide.up %} and {% endif %}{% if r.slide.up %}{{ '%g'|format(r.slide.up|abs) }} {{ 'up' if r.slide.up > 0 else 'down' }}{% endif %}.{% endif %}
+        Cells matching, empty paper included: {{ r.details.cells_match }}%.</p>
+        {% if r.loss %}<p class="loss">{{ r.loss.sentence }}</p>{% endif %}
+        {% if r.checks %}
+        <p class="small"><b>Readings in order</b></p>
+        <div class="checks">
+          {% for c in r.checks %}<figure><img src="{{ c.board_url }}?size=200" alt="the board at check {{ c.check }}" loading="lazy" width="110" height="110">
+            <figcaption>{{ ['first', 'second'][c.check - 1] }}: {{ c.in_place|round|int }}% · {{ c.slid_to_fit|round|int }}%</figcaption></figure>{% endfor %}
+          <figure><img src="{{ r.board_url }}?framed=1&size=200" alt="the final board" loading="lazy" width="110" height="110">
+            <figcaption>final: {{ r.in_place|round|int }}% · {{ r.slid_to_fit|round|int }}%</figcaption></figure>
+        </div>
+        {% endif %}
+        <details><summary>shape lists</summary>
+          <b class="small">the picture</b>{{ shapelines(picture_lines) }}
+          <b class="small">{{ r.builder }}</b>{{ shapelines(r.lines) }}
+        </details>
+      </div>
+    </details>
   </div>
-  {% if r.note %}<p class="note"><b>{{ r.builder }}'s note:</b> {{ r.note }}</p>{% endif %}
-  <details><summary>shape lists</summary>
-    <div class="two"><div><b class="small">the picture</b>{{ shapelines(picture_lines) }}</div>
-    <div><b class="small">{{ r.builder }}</b>{{ shapelines(r.lines) }}</div></div>
-  </details>
-</div>
 {% endfor %}
+</div>
 {% endif %}
 {% endblock %}

@@ -32,8 +32,12 @@ def _snap(v, name: str, notes: list[str]) -> float:
         raise ShapeError(f"{name} must be a finite number.")
     snapped = round(v / STEP) * STEP
     if abs(snapped - v) > 1e-9:
-        notes.append(f"{name} {v:g} was rounded to {snapped:g} (positions go in steps of 1/8).")
+        notes.append(f"{name} {v:g} → {snapped:g}")
     return snapped
+
+
+def _say_rounded(notes: list[str]) -> list[str]:
+    return [f"Rounded to steps of 1/8: {', '.join(notes)}."] if notes else []
 
 
 def normalise(raw: dict) -> tuple[dict, list[str]]:
@@ -66,7 +70,7 @@ def normalise(raw: dict) -> tuple[dict, list[str]]:
         for k, (x, y) in enumerate(pts):
             _inside(x, y, f"point {k + 1}")
         out["points"] = [[num(x), num(y)] for x, y in pts]
-        return out, notes
+        return out, _say_rounded(notes)
     names = FIELDS[kind]
     vals = {}
     for n in names:
@@ -88,7 +92,7 @@ def normalise(raw: dict) -> tuple[dict, list[str]]:
         }.items():
             _inside(x, y, f"its {side} edge")
     out.update({n: num(v) for n, v in vals.items()})
-    return out, notes
+    return out, _say_rounded(notes)
 
 
 def _inside(x: float, y: float, what: str):

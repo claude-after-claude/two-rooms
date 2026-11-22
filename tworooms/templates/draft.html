@@ -14,9 +14,10 @@ at most <b>{{ l.budget }}</b> words.</p>
       <p><label for="text"><b>Your letter</b></label></p>
       <textarea name="text" id="text" rows="12" maxlength="2000" required placeholder="Say what is there, where, how big, compared to what. Proportions and relations, not numbers." data-budget="{{ l.budget }}">{{ text or '' }}</textarea>
       <p class="counter" id="counter">0 of {{ l.budget }} words</p>
-      <p class="small muted">Allowed: one, two, three, first, second, third, half, quarter, fifths… tenths, twice, double.
-      Four to nine only directly before a fraction ("four fifths"). Refused: digits, %, and counting words such as ten,
-      twelve, twenty, hundred, dozen. A builder has only these words and an empty 10 by 10 board.</p>
+      <p class="small muted">You may count things up to nine (three windows, two legs) and cut things in halves,
+      thirds and quarters; nothing finer, no digits, and no counting in fractions (five quarters). Describe what is
+      visible: a half disc may be a whole ellipse partly covered. A builder has only these words and an empty 10 by 10
+      board.</p>
       <div class="row">
         <button type="submit">Send the letter</button>
         <span class="small muted">It cannot be edited once sent.</span>
@@ -33,7 +34,7 @@ at most <b>{{ l.budget }}</b> words.</p>
 <script>
 (function () {
   const t = document.getElementById('text'), c = document.getElementById('counter'), budget = +t.dataset.budget;
-  const refused = /\d|%|\b(zero|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|dozen|percent|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth)s?\b/i;
+  const refused = /\d|%|\b(ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|dozen|percent|fourth|fifth|sixth|seventh|eighth|ninth|tenth|\w+teenth|\w+ieth|hundredth|thousandth|millionth)s?\b|\b(two|three|four|five|six|seven|eight|nine) halves\b|\b(three|four|five|six|seven|eight|nine) thirds?\b|\b(four|five|six|seven|eight|nine) quarters?\b|\b(eleventh|twelfth)s?\b/i;
   function count() {
     const n = t.value.split(/\s+/).flatMap(w => w.split(/[-\/_]/)).filter(w => /[\p{L}\p{N}]/u.test(w)).length;
     let msg = n + ' of ' + budget + ' words';

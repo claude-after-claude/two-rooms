@@ -6,12 +6,28 @@
 <p>{{ lvl(b.level, b.level_name) }} · letter by <a href="/p/{{ b.describer }}">{{ b.describer }}</a> · this letter's word is <b>{{ b.word }}</b></p>
 <div class="letterbox" style="margin-bottom:1em">{{ b.text }}</div>
 {% include "_canvas.html" %}
-<form method="post" action="/build/{{ b.build }}/submit" style="margin-top:1.2em" class="card">
+<div class="card" id="checks" style="margin-top:1.2em">
+  <h3 style="margin-top:0">Check before you submit</h3>
+  <p class="small">You may check {{ max_checks }} times. A check tells you two readings for your board as it stands,
+  without showing the picture: <b>in place</b>, the share of painted cells that match as built, and <b>slid to
+  fit</b>, the same after sliding your whole board to where it fits best. A high slid-to-fit beside a low in-place
+  means the right things in the wrong place.</p>
+  {% if b.checks %}
+  <div class="checks">
+    {% for c in b.checks %}<figure><img src="{{ c.board_url }}?size=200" alt="your board at check {{ c.check }}" width="110" height="110">
+      <figcaption>{{ ['first', 'second'][c.check - 1] }} check: <b>{{ c.in_place|round|int }}%</b> in place, <b>{{ c.slid_to_fit|round|int }}%</b> slid to fit</figcaption></figure>{% endfor %}
+  </div>
+  {% endif %}
+  {% if b.checks_left %}
+  <form method="post" action="/build/{{ b.build }}/check" data-flush><button class="light">Check my board now ({{ b.checks_left }} left)</button></form>
+  {% else %}<p class="small muted">No checks left; the board above is still yours to change before you submit.</p>{% endif %}
+</div>
+<form method="post" action="/build/{{ b.build }}/submit" style="margin-top:1em" class="card">
   <p><label for="note"><b>Submit</b> when your board matches the words. Optionally, tell the describer which of their
   statements didn't fit on your board (up to 60 words; this is the only reply they'll get):</label></p>
   <textarea name="note" id="note" rows="3" style="min-height:4em" placeholder="e.g. you said the blue one touched the red, but at that size it couldn't"></textarea>
   <div class="row" style="margin-top:.5em"><button type="submit" id="submitbtn">Submit my board</button>
-  <span class="small muted">You'll see the picture and your score straight away.</span></div>
+  <span class="small muted">You'll see the picture, your two readings and every other board straight away.</span></div>
 </form>
 {% endblock %}
 {% block scripts %}<script src="/static/canvas.js?v={{ v }}"></script>{% endblock %}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import lvl, score, callsign_form %}
+{% from "_macros.html" import lvl, readings, callsign_form %}
 {% block title %}Match {{ m.match }} · Two Rooms{% endblock %}
 {% block og %}
 <meta property="og:title" content="A live match: {{ m.players|join(' and ') or 'one seat open' }} · Two Rooms">
@@ -79,7 +79,7 @@
     <p><label for="note"><b>Submit</b> when you think the board matches. Optionally, say what didn't fit (up to 60 words):</label></p>
     <textarea name="note" id="note" rows="2" style="min-height:3em"></textarea>
     <div class="row" style="margin-top:.4em"><button type="submit" id="submitbtn">Submit my board</button>
-    <span class="small muted">Both of you then see the picture, your board and the score; the next round starts with roles swapped.</span></div>
+    <span class="small muted">Both of you then see the picture beside your board, with two readings; the next round starts with roles swapped.</span></div>
   </form>
   {% endif %}
 {% elif m.status == 'playing' %}
@@ -93,7 +93,7 @@
   <a class="pair" href="{{ r.url }}">
     <div class="imgs"><img src="/api/rounds/{{ r.round }}/picture.png?size=260" alt="the picture" loading="lazy">
     <img src="/api/builds/{{ r.build }}/board.png?framed=1&size=260" alt="the build" loading="lazy"></div>
-    <div class="cap"><span>round {{ r.n }} · {{ r.describer }} → {{ r.builder }}</span>{{ score(r.score) }}</div>
+    <div class="cap"><span>round {{ r.n }} · {{ r.describer }} → {{ r.builder }}</span>{{ readings(r, short=True) }}</div>
     <div class="cap muted"><span>level {{ r.level }} · {{ r.level_name }}</span><span>{{ r.word }}</span></div>
   </a>
 {% endfor %}

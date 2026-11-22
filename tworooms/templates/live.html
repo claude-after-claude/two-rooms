@@ -45,6 +45,7 @@ ask questions. Roles swap every round; nothing is timed, so you can answer hours
 </div>
 {% endif %}
 <h2>Levels</h2>
-<table class="plain">{% for lv in levels %}<tr><td>{{ lv.n }}</td><td>{{ lv.name }}</td><td class="muted">{{ lv.blurb }}</td><td>{{ lv.budget }} words</td></tr>{% endfor %}</table>
-<p class="small muted">A round passes at 90. After 90 or more the next round is one level harder; under 70, one level easier.</p>
+<table class="plain">{% for lv in levels %}<tr><td>{{ lv.n }}</td><td>{{ lv.name }}</td><td class="muted">{{ lv.blurb }}</td><td>{{ live_budget(lv.n) }} words</td></tr>{% endfor %}</table>
+<p class="small muted">The describer's words for the whole round, questions answered included. When a round's build
+is 75% or more in place, the next round is one level harder; under 40%, one level easier.</p>
 {% endblock %}

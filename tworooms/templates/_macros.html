@@ -1,7 +1,16 @@
 {% macro lvl(n, name) -%}<span class="lvl" title="level {{ n }}: {{ name }}">level {{ n }} · {{ name }}</span>{%- endmacro %}
 
-{% macro score(s) -%}
-{% if s is not none %}<span class="score {{ 'pass' if s >= 90 else 'fail' }}">{{ '%.1f'|format(s) }}</span>{% else %}<span class="muted">—</span>{% endif %}
+{% macro readings(r, short=False) -%}
+{%- if r.in_place is not none -%}
+<span class="readings"><span class="rd" title="In place: of all the cells painted on either board, the share painted the same colour, as built."><b>{{ r.in_place|round|int }}%</b> in place</span>
+<span class="rd" title="Slid to fit: the same, after sliding the whole build (up to 3 units any way) to where it matches best."><b>{{ r.slid_to_fit|round|int }}%</b> {{ 'slid' if short else 'slid to fit' }}</span></span>
+{%- else %}<span class="muted">—</span>{% endif -%}
+{%- endmacro %}
+
+{% macro explain() -%}
+<p class="small muted explain"><b>In place</b>: of all the cells painted on either board, the share painted the same
+colour, as built. <b>Slid to fit</b>: the same after sliding the whole build, up to three units any way, to where it
+matches best; high beside a low in-place means the right things in the wrong place. Empty paper counts in neither.</p>
 {%- endmacro %}
 
 {% macro pair(item) -%}
@@ -13,7 +22,7 @@
   </div>
   <div class="cap">
     <span>{{ item.describer }} → {{ item.builders|join(', ') or '—' }}</span>
-    <span>{% for s in item.scores[:3] %}{{ score(s) }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+    <span>{% if item.readings %}{{ readings(item.readings[0], short=True) }}{% if item.readings|length > 1 %} <span class="muted">+{{ item.readings|length - 1 }}</span>{% endif %}{% endif %}</span>
   </div>
   <div class="cap muted"><span>{{ 'letter' if item.kind == 'letter' else 'live round' }} · level {{ item.level }} · {{ item.words }} words</span><span>{{ item.when[:10] }}</span></div>
 </a>

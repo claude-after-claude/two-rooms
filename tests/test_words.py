@@ -1,39 +1,44 @@
 import pytest
 
-from tworooms.words import REFUSED_BASE, Refused, check_message, check_numbers, count_words
+from tworooms.words import ALLOWED_WORDS, REFUSED_BASE, Refused, check_message, check_numbers, count_words
 
 ACCEPTED = [
     "A red block about a third of the way across, touching the bottom.",
-    "four fifths of the way up",
-    "Four-fifths of the way up",
-    "seven tenths across, nine tenths up",
-    "five sixths, six sevenths, eight ninths",
-    "two blue squares, one green, three yellow",
-    "half, halves, thirds, quarters, fourths, fifths, sixths, sevenths, eighths, ninths, tenths",
-    "the first, the second and the third one; once, twice, double, triple",
-    "a tenth of the side, often seen, eighth note, Tenths",
-    "it is fourth from the left",
-    "attention, intent, often, kitten, weightless",
+    "Four blocks along the bottom; six shapes in all.",
+    "three windows, two legs, nine spots, five petals",
+    "three quarters of the way up, two thirds across, one half",
+    "half, halves, thirds, quarters, the first, the second, the third",
+    "once, twice, double, triple",
+    "a quarter of the way in, a third as wide",
+    "the red ones, a zero of a gap",            # zero is not past nine and not a fraction
+    "attention, intent, often, kitten, weightless, fiftyish",
+    "both halves of it, the other half",
+    "half a quarter",                           # compounds are not caught; the transcript is public
 ]
 
 REFUSED_SENTENCES = [
-    "the red one is 3 units wide",
-    "about 40% across",
-    "½ of the way",
-    "four of them",
-    "five squares",
-    "it is six wide",
-    "near the corner, seven",
-    "four and a half",
-    "nine units up",
-    "a dozen cells",
-    "tens of cells",
-    "fours and fives",
-    "about a twentieth of the side",
-    "twenty-one",
-    "one hundredth",
-    "the eleventh cell",
-    "zeroes",
+    ("the red one is 3 units wide", "digit"),
+    ("about forty% across", "%"),
+    ("½ of the way", "digit"),
+    ("ten of them", "past nine"),
+    ("twelve cells", "past nine"),
+    ("twenty-one", "past nine"),
+    ("a dozen cells", "past nine"),
+    ("tens of cells", "past nine"),
+    ("about a fifth of the way up", "finer"),
+    ("seven tenths across", "finer"),
+    ("one eighth", "finer"),
+    ("it is fourth from the left", "finer"),
+    ("the eleventh cell", "finer"),
+    ("one hundredth", "finer"),
+    ("five quarters of its width", "counting in fractions"),
+    ("seven quarters", "counting in fractions"),
+    ("four quarters", "counting in fractions"),
+    ("five thirds", "counting in fractions"),
+    ("three thirds", "counting in fractions"),
+    ("two halves", "counting in fractions"),
+    ("three halves as tall", "counting in fractions"),
+    ("four-quarters", "counting in fractions"),
 ]
 
 
@@ -42,10 +47,11 @@ def test_accepted(text):
     check_numbers(text)
 
 
-@pytest.mark.parametrize("text", REFUSED_SENTENCES)
-def test_refused(text):
-    with pytest.raises(Refused):
+@pytest.mark.parametrize("text,why", REFUSED_SENTENCES)
+def test_refused(text, why):
+    with pytest.raises(Refused) as e:
         check_numbers(text)
+    assert why in str(e.value)
 
 
 @pytest.mark.parametrize("word", REFUSED_BASE)
@@ -56,20 +62,25 @@ def test_every_refused_word(word):
             check_numbers(text)
 
 
-@pytest.mark.parametrize("word", ["four", "five", "six", "seven", "eight", "nine"])
-def test_small_counts_only_before_fractions(word):
-    check_numbers(f"{word} tenths")
-    with pytest.raises(Refused):
-        check_numbers(f"{word} blocks")
-    with pytest.raises(Refused):
-        check_numbers(f"it ends at {word}")
+@pytest.mark.parametrize("word", ALLOWED_WORDS)
+def test_every_allowed_word(word):
+    check_numbers(f"about {word} of it")
+    check_numbers(f"{word.capitalize()}, then the rest")
 
 
-def test_refusal_explains_and_spends_nothing():
+def test_numerator_must_be_smaller_than_denominator():
+    for ok in ("one half", "one third", "two thirds", "one quarter", "two quarters", "three quarters"):
+        check_numbers(ok)
+    for bad in ("two halves", "three thirds", "four quarters", "nine quarters", "eight thirds"):
+        with pytest.raises(Refused):
+            check_numbers(bad)
+
+
+def test_refusal_explains_the_rule_and_spends_nothing():
     with pytest.raises(Refused) as e:
         check_message("twelve cells", budget_left=10)
     msg = str(e.value)
-    assert "proportion" in msg and "Nothing was spent" in msg
+    assert "count things up to nine" in msg and "halves, thirds and quarters" in msg and "Nothing was spent" in msg
 
 
 def test_callsigns_with_digits_are_not_numbers():
@@ -98,9 +109,3 @@ def test_long_tokens_and_budget():
         check_message("x " * 1001)
     with pytest.raises(Refused):
         check_message("   ")
-
-
-def test_counting_shapes_gets_a_specific_hint():
-    with pytest.raises(Refused) as e:
-        check_numbers("Four blocks along the bottom.")
-    assert "Counting the shapes" in str(e.value)

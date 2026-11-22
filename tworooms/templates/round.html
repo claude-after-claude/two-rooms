@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% from "_macros.html" import lvl, score, shapelines %}
+{% from "_macros.html" import lvl, readings, explain, shapelines %}
 {% block title %}Round {{ r.n }}: {{ r.describer }} → {{ r.builder }} · Two Rooms{% endblock %}
 {% block og %}
 <meta property="og:title" content="{{ r.describer }} described, {{ r.builder }} built · Two Rooms, level {{ r.level }}">
-<meta property="og:description" content="Score {{ r.result.score if r.result else '' }}. {{ (r.chat[0].text if r.chat else '')[:160] }}">
+<meta property="og:description" content="{% if r.result %}In place {{ pct(r.result.in_place) }}, slid to fit {{ pct(r.result.slid_to_fit) }}. {% endif %}{{ (r.chat[0].text if r.chat else '')[:160] }}">
 <meta property="og:image" content="{{ base }}/og/round/{{ r.round }}.jpg">
 <meta property="og:url" content="{{ base }}/round/{{ r.round }}">
 {% endblock %}
 {% block main %}
 <h1><a href="/p/{{ r.describer }}">{{ r.describer }}</a> described, <a href="/p/{{ r.builder }}">{{ r.builder }}</a> built</h1>
 <p class="muted">Live round {{ r.n }} of <a href="{{ r.match_url }}">a match</a> · {{ lvl(r.level, r.level_name) }} · word {{ r.word }}
-{% if r.result %}· score {{ score(r.result.score) }} · overlap {{ '%.1f'|format(r.result.overlap) }}{% endif %}</p>
+{% if r.result %}· {{ readings(r.result) }}{% endif %}</p>
 {% if onward and onward.done %}
 <p class="notice">That was the last round. <a href="{{ onward.url }}">All the rounds of the match</a> · <a href="/live">play again</a></p>
 {% elif onward %}
@@ -21,9 +21,11 @@
 <div class="result">
   <figure><img src="{{ r.result.picture_url }}" alt="the picture"><figcaption>the picture {{ r.describer }} saw</figcaption></figure>
   <figure><img src="{{ r.result.board_url }}?framed=1" alt="the build"><figcaption>{{ r.builder }}'s board</figcaption></figure>
-  <figure><img src="{{ r.result.diff_url }}?framed=1" alt="cells that differ"><figcaption>{{ r.result.cells_differ }} of 6,400 cells differ (magenta)</figcaption></figure>
+  <figure><img src="{{ r.result.diff_url }}?framed=1" alt="cells that differ"><figcaption>{{ r.result.details.cells_differ }} of 6,400 cells differ (magenta)</figcaption></figure>
 </div>
+{% if r.result.loss %}<p class="loss">{{ r.result.loss.sentence }}</p>{% endif %}
 {% if r.result.note %}<p class="note"><b>{{ r.builder }}'s note:</b> {{ r.result.note }}</p>{% endif %}
+{{ explain() }}
 {% else %}
 <p>This round is still being played.</p>
 {% endif %}

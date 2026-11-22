@@ -12,6 +12,7 @@
     tworooms.py place BUILD rect red 2 1 3 2  |  ellipse blue 5 5 2 1.5  |  triangle green 1 1 4 1 1 5
     tworooms.py shapes BUILD                   # the shapes placed so far
     tworooms.py board BUILD                    # saves the board image
+    tworooms.py check BUILD                    # the two readings for the board as it stands (letters: twice)
     tworooms.py undo|clear BUILD
     tworooms.py submit BUILD [--note "what did not fit"]
     tworooms.py close LETTER                   # close your open letter (or discard a draft)
@@ -114,6 +115,8 @@ _CLI = [
     (r"GET /api/letters/(\w+)/picture\.png", r"tworooms.py letter \1 --save"),
     (r"GET /api/letters\b", "tworooms.py letters"),
     (r"POST /api/builds/(\w+)/place(?: with e\.g\. \{[^}]*\})?", r"tworooms.py place \1 rect red 2 1 3 2"),
+    (r"POST /api/builds/(\w+)/check", r"tworooms.py check \1"),
+    (r"POST /api/words", r"--check"),
     (r"GET /api/builds/(\w+)/board\.png(?:\?grid=1)?", r"tworooms.py board \1"),
     (r"POST /api/builds/(\w+)/submit(?: \(optionally \{[^}]*\}\))?", r'tworooms.py submit \1 --note "..."'),
     (r"PUT /api/builds/(\w+)/shapes|PUT /shapes", "replace shapes"),
@@ -185,9 +188,11 @@ def cmd_hall(api: Api, a):
     if d["recent"]:
         print("Recently finished:")
         for r in d["recent"][:5]:
-            sc = ", ".join(f"{s}" for s in r["scores"] if s is not None)
+            sc = ", ".join(f"{_pct(x['in_place'])}/{_pct(x['slid_to_fit'])}" for x in r["readings"] if x["in_place"] is not None)
             print(f"  {r['kind']} {r['id']}  level {r['level']}  {r['describer']} → {', '.join(r['builders']) or 'nobody'}"
                   f"  {sc}  {r['url']}")
+    if d["recent"]:
+        print("  (in place / slid to fit)")
     print("Levels: " + "; ".join(f"{l['level']} {l['level_name']} ({l['budget']} words)" for l in d["levels"]))
     show_next(d)
 
@@ -210,7 +215,8 @@ def cmd_describe(api: Api, a):
     d = api.post("/api/letters", {"level": a.level})
     path = save_image(api, d["picture_url"], a.out, f"letter-{d['letter']}-picture.png")
     print(f"Letter {d['letter']}: level {d['level']} ({d['level_name']}). The picture is saved at\n  {path}")
-    print(f"Its frame says {d['word']}. Your budget: {d['budget']} words, and no numbers.")
+    print(f"Its frame says {d['word']}. Your budget: {d['budget']} words. You may count things up to nine and cut them in "
+          "halves, thirds and quarters; nothing finer, and no digits.")
     print(f"\nnext: look at the picture, then  tworooms.py send {d['letter']} \"your description\"   "
           "(one text; it cannot be edited after sending)")
 
@@ -265,7 +271,7 @@ def cmd_letter(api: Api, a):
     if d.get("picture_url") and a.save:
         print(f"Picture saved at {save_image(api, d['picture_url'], a.out, f'letter-{a.letter}-picture.png')}")
     for r in d.get("results", []):
-        print(f"  {r['builder']}: {r['score']} (overlap {r['overlap']}){'  passed' if r['passed'] else ''}  board {r['board_url']}")
+        print(f"  {r['builder']}: in place {_pct(r['in_place'])}, slid to fit {_pct(r['slid_to_fit'])}  board {r['board_url']}")
         if r.get("note"):
             print(f"    note: {r['note']}")
     for o in d.get("same_picture", []):
@@ -323,11 +329,9 @@ def _print_build(d):
 def cmd_place(api: Api, a):
     api.need_key()
     d = api.post(f"/api/builds/{a.build}/place", _parse_shape(a.shape))
-    print(f"Placed {d['placed']}. {d['count']} of at most {d['max_shapes']} shapes:")
-    _print_build(d)
+    print(f"Placed {d['placed']}  ({d['count']} on the board; `shapes {a.build}` lists them)")
     for n in d.get("notes", []):
-        print(f"  note: {n}")
-    print(f"\nnext: board {a.build} to look at it; undo {a.build} to take the last one back; submit {a.build} when done")
+        print(f"  {n}")
 
 
 def cmd_shapes(api: Api, a):
@@ -364,15 +368,49 @@ def cmd_submit(api: Api, a):
     api.need_key()
     d = api.post(f"/api/builds/{a.build}/submit", {"note": a.note} if a.note else {})
     r = d["result"]
-    print(f"Score {r['score']}: the share of the board's 6,400 cells whose colour (or emptiness) matches. "
-          f"{'Passed (90 passes).' if r['passed'] else 'Not passed: 90 passes.'}")
-    print(f"Overlap {r['overlap']}: of the cells coloured on either board, the share coloured the same (ignores empty paper).")
+    _print_readings(r, slide=r.get("slide"))
+    if r.get("loss"):
+        print(f"\n{r['loss']['sentence']}")
     pic = save_image(api, r["picture_url"], a.out, f"build-{d['build']}-picture.png")
     dif = save_image(api, r["diff_url"], a.out, f"build-{d['build']}-diff.png")
-    print(f"The picture: {pic}\nWhere you differ: {dif}\nThe page: {r['page_url']}")
+    print(f"\nThe picture: {pic}\nWhere you differ (magenta): {dif}")
+    if "others" in r:
+        print(("You are the first to build this letter. " if not r["others"] else
+               f"{r['others']} other{'s' if r['others'] != 1 else ''} built it too. ")
+              + f"Every board, side by side: {r['page_url']}")
+    else:
+        print(f"The round's page: {r['page_url']}")
     print("The picture's true shapes:")
     for line in r["picture_lines"]:
         print(f"  {line}")
+    show_next(d)
+
+
+def _pct(v):
+    return f"{round(v)}%"
+
+
+def _print_readings(r, slide=None, prefix=""):
+    where = ""
+    if slide and (slide.get("right") or slide.get("up")):
+        parts = []
+        if slide["right"]:
+            parts.append(f"{abs(slide['right']):g} {'right' if slide['right'] > 0 else 'left'}")
+        if slide["up"]:
+            parts.append(f"{abs(slide['up']):g} {'up' if slide['up'] > 0 else 'down'}")
+        where = f", best slid {' and '.join(parts)}"
+    print(f"{prefix}In place:    {_pct(r['in_place']):>4}   of the cells painted on either board, the share painted the same colour, as built")
+    print(f"{prefix}Slid to fit: {_pct(r['slid_to_fit']):>4}   the same, sliding the whole build up to 3 units to where it fits best{where}")
+
+
+def cmd_check(api: Api, a):
+    api.need_key()
+    d = api.post(f"/api/builds/{a.build}/check")
+    print(f"Check {d['check']} of {d['check'] + d['checks_left']} (the picture stays hidden):")
+    _print_readings(d, prefix="  ")
+    if d["slid_to_fit"] - d["in_place"] >= 20:
+        print("  A high slid-to-fit beside a low in-place: the right things, in the wrong place.")
+    print(f"{d['checks_left']} check{'s' if d['checks_left'] != 1 else ''} left.")
     show_next(d)
 
 
@@ -451,7 +489,8 @@ def _print_match(api: Api, d, a, new_events=None, compact=False):
                 print(f"  new · round {e['round']} started: level {e['level']}, {e['describer']} describes, "
                       f"{e['builder']} builds, word {e['word']}")
             elif e["kind"] == "round_finished":
-                print(f"  new · round {e['round']} finished: score {e['score']}  {e.get('url', '')}")
+                print(f"  new · round {e['round']} finished: in place {_pct(e['in_place'])}, slid to fit "
+                      f"{_pct(e['slid_to_fit'])}  {e.get('url', '')}")
             elif e["kind"] in ("joined", "match_finished", "match_abandoned"):
                 print(f"  new · {e['kind'].replace('_', ' ')}" + (f": {e['player']}" if e.get("player") else ""))
     if cur:
@@ -466,7 +505,8 @@ def _print_match(api: Api, d, a, new_events=None, compact=False):
         if you == "builder":
             print(f"Your board: {len(cur.get('shapes', []))} shapes placed.")
     for r in ([] if compact else d.get("finished_rounds", [])):
-        print(f"  round {r['n']}: level {r['level']}, {r['describer']} → {r['builder']}, score {r['score']}  {r['url']}")
+        print(f"  round {r['n']}: level {r['level']}, {r['describer']} → {r['builder']}, in place {_pct(r['in_place'])}, "
+              f"slid to fit {_pct(r['slid_to_fit'])}  {r['url']}")
     _remember(api, d)
     show_next(d)
 
@@ -559,6 +599,7 @@ def main(argv=None):
     p.add_argument("--no-grid", dest="grid", action="store_false")
     add("undo", cmd_undo, "build")
     add("clear", cmd_clear, "build")
+    add("check", cmd_check, "build")
     add("submit", cmd_submit, "build", note={})
     add("close", cmd_close, "letter")
     add("invite", cmd_invite, rounds={"type": int}, level={"type": int})
@@ -587,7 +628,7 @@ def main(argv=None):
     try:
         a.fn(api, a)
     except Fail as e:
-        print(f"error: {e}", file=sys.stderr)
+        print(f"error: {cli_next(str(e))}", file=sys.stderr)
         return 1
     return 0
 

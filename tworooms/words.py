@@ -3,47 +3,35 @@ import re
 
 from .config import MAX_MESSAGE_CHARS, MAX_TOKEN_CHARS
 
-FRACTION_WORDS = {
-    "half", "halves", "third", "thirds", "quarter", "quarters", "fourth", "fourths", "fifth", "fifths",
-    "sixth", "sixths", "seventh", "sevenths", "eighth", "eighths", "ninth", "ninths", "tenth", "tenths",
-}
-ALWAYS_ALLOWED = {"one", "two", "three", "first", "second", "once", "twice", "double", "triple"} | FRACTION_WORDS
-BEFORE_FRACTION_ONLY = ["four", "five", "six", "seven", "eight", "nine"]
-_EXAMPLE_FRACTION = {"four": "fifths", "five": "sixths", "six": "sevenths", "seven": "eighths", "eight": "ninths", "nine": "tenths"}
+RULE = ("You may count things up to nine (three windows, two legs) and cut things in halves, thirds and quarters; "
+        "nothing finer, no digits, and no counting in fractions (five quarters).")
 
-_TEENS = ["ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
-_TENS = ["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"]
-_BIG = ["hundred", "thousand", "million", "dozen", "percent"]
-_ORDINALS = [
-    "eleventh", "twelfth", "thirteenth", "fourteenth", "fifteenth", "sixteenth", "seventeenth", "eighteenth",
-    "nineteenth", "twentieth", "thirtieth", "fortieth", "fiftieth", "sixtieth", "seventieth", "eightieth",
-    "ninetieth", "hundredth", "thousandth", "millionth",
-]
-REFUSED_BASE = ["zero"] + _TEENS + _TENS + _BIG + _ORDINALS
+NUMBERS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9}
+FRACTIONS = {"half": 2, "halves": 2, "third": 3, "thirds": 3, "quarter": 4, "quarters": 4}
+ALLOWED_WORDS = list(NUMBERS) + ["first", "second", "third", "once", "twice", "double", "triple",
+                                  "half", "halves", "thirds", "quarter", "quarters"]
+
+_ABOVE_NINE = (["ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen",
+                "nineteen", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred",
+                "thousand", "million", "dozen", "percent"])
+_FINER = ["fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth", "eleventh", "twelfth", "thirteenth",
+          "fourteenth", "fifteenth", "sixteenth", "seventeenth", "eighteenth", "nineteenth", "twentieth", "thirtieth",
+          "fortieth", "fiftieth", "sixtieth", "seventieth", "eightieth", "ninetieth", "hundredth", "thousandth",
+          "millionth"]
+REFUSED_BASE = _ABOVE_NINE + _FINER
 
 
 def _plural(w: str) -> str:
     if w.endswith("y"):
         return w[:-1] + "ies"
-    if w.endswith("x"):
-        return w + "es"
     return w + "s"
 
 
-REFUSED = {w: w for w in REFUSED_BASE}
-REFUSED.update({_plural(w): w for w in REFUSED_BASE})
-REFUSED.update({"zeroes": "zero"})
-# "fours", "sixes": a plural of a small number is always a count, never a fraction
-REFUSED.update({_plural(w): w for w in BEFORE_FRACTION_ONLY})
-
-ALLOWED_SUMMARY = (
-    "one, two, three, first, second, third, once, twice, double, triple, and the fractions half, third, quarter, "
-    "fourth, fifth, sixth, seventh, eighth, ninth, tenth (with their plurals); four to nine only directly before a "
-    'fraction word ("four fifths", "seven tenths")'
-)
-
-SHAPE_NOUNS = {"block", "rectangle", "rect", "shape", "circle", "oval", "ellipse", "triangle", "square", "bar", "thing",
-               "piece", "colour", "color", "blob"}
+REFUSED = {}
+for _w in _ABOVE_NINE:
+    REFUSED[_w] = REFUSED[_plural(_w)] = "above"
+for _w in _FINER:
+    REFUSED[_w] = REFUSED[_plural(_w)] = "finer"
 
 _ALPHA = re.compile(r"[^\W\d_]+")
 _SPLIT = re.compile(r"[-/_]")
@@ -64,7 +52,7 @@ class Refused(ValueError):
 
 
 def check_numbers(text: str, exempt: tuple[str, ...] = ()) -> None:
-    """Raise Refused with a plain explanation if the text counts in numbers. `exempt` are callsigns that may be
+    """Raise Refused with a plain explanation if the text breaks the number rule. `exempt` are callsigns that may be
     written as they are (a callsign such as fable52 contains digits but is not a count)."""
     scan = text
     for name in exempt:
@@ -72,33 +60,25 @@ def check_numbers(text: str, exempt: tuple[str, ...] = ()) -> None:
             scan = re.sub(re.escape(name), " ", scan, flags=re.IGNORECASE)
     for ch in scan:
         if ch.isdigit() or ch.isnumeric():
-            raise Refused(
-                f'Not sent: it contains the digit "{ch}". Messages may not contain numbers. {_HOW}'
-            )
+            raise Refused(f'Not sent: it contains the digit "{ch}"; write numbers as words, up to nine. {_HOW}')
         if ch in "%‰":
-            raise Refused(f'Not sent: it contains "{ch}". Messages may not contain percentages. {_HOW}')
+            raise Refused(f'Not sent: it contains "{ch}". {_HOW}')
     words = [w.lower() for w in _ALPHA.findall(scan)]
     for i, w in enumerate(words):
-        if w in REFUSED:
-            raise Refused(f'Not sent: "{w}" is a counting word. {_HOW}')
-        if w in BEFORE_FRACTION_ONLY:
-            nxt = words[i + 1] if i + 1 < len(words) else None
-            if nxt not in FRACTION_WORDS:
-                hint = ""
-                if nxt and nxt.rstrip("s") in SHAPE_NOUNS:
-                    hint = (f' Counting the shapes is refused too: write "{nxt}" or "a few {nxt}"; the builder learns '
-                            "how many from your description of each.")
-                raise Refused(
-                    f'Not sent: "{w}" may only be used directly before a fraction word, as in "{w} '
-                    f'{_EXAMPLE_FRACTION[w]}".{hint} {_HOW}'
-                )
+        kind = REFUSED.get(w)
+        if kind == "above":
+            raise Refused(f'Not sent: "{w}" counts past nine. {_HOW}')
+        if kind == "finer":
+            raise Refused(f'Not sent: "{w}" cuts finer than a quarter. {_HOW}')
+        if w in FRACTIONS and i > 0 and words[i - 1] in NUMBERS and NUMBERS[words[i - 1]] >= FRACTIONS[w]:
+            raise Refused(
+                f'Not sent: "{words[i - 1]} {w}" counts in {w if w.endswith("s") else w + "s"}, and counting in '
+                "fractions is counting. The number in front of a fraction must be smaller than its bottom: "
+                f'"three quarters", "two thirds", "one half". {_HOW}')
 
 
-_HOW = (
-    "Describe by proportion and relation instead of counting in units: \"about two fifths of the way up\", "
-    "\"as wide as the red one\", \"touching its left side\". Allowed: " + ALLOWED_SUMMARY + ". "
-    "Nothing was spent from your word budget."
-)
+_HOW = (RULE + ' Describe by proportion and relation: "about a third of the way up", "as wide as the red one", '
+        '"touching its left side". Nothing was spent from your word budget.')
 
 
 def check_message(text: str, budget_left: int | None = None, exempt: tuple[str, ...] = (), unit: str = "round") -> int:

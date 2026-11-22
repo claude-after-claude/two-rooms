@@ -429,7 +429,8 @@ def gen6(rng, name=None):
     return _shift(shapes, dx, dy)
 
 
-def gen8(rng):
+def gen8(rng, names=None):
+    names = names or rng.sample(SCENE_FIGURES, 2)
     gh = _on(rng, 1.25, 2.25, 0.25)
     ground = R(pick(rng, ["green", "green", "yellow"]), 0, 0, BOARD, gh)
     extras = rng.choice(["sky", "sun", "both"])
@@ -441,7 +442,7 @@ def gen8(rng):
     halves = [(0.25, 4.85), (5.15, 9.75)]
     rng.shuffle(halves)
     figs = []
-    for name, (lo, hi) in zip(rng.sample(SCENE_FIGURES, 2), halves):
+    for name, (lo, hi) in zip(names, halves):
         base = gh - 0.5
         for _ in range(30):
             got = attempt(figure, rng, name, hi - lo, BOARD - 0.25 - base, True, (0.8, 1.0))
@@ -486,11 +487,24 @@ GENERATORS = {1: gen1, 2: gen2, 3: gen3, 4: gen4, 5: gen5, 6: gen6, 7: gen7, 8: 
 
 
 def generate(level: int, seed: int) -> list[dict]:
+    return generate_with_kind(level, seed)[0]
+
+
+def generate_with_kind(level: int, seed: int) -> tuple[list[dict], str | None]:
+    """The picture for (level, seed), and for levels 6 and 8 which template(s) it shows. The template is chosen once
+    and only its geometry is retried: drawing a new template after every failed try favoured the easy ones."""
     rng = random.Random(f"two-rooms:{level}:{seed}")
-    for _ in range(5000):
-        shapes = attempt(GENERATORS[level], rng)
+    kind, args = None, ()
+    for i in range(5000):
+        if level == 6 and i % 400 == 0:
+            kind = rng.choice(sorted(FIGURES))
+            args = (kind,)
+        elif level == 8 and i % 400 == 0:
+            pair = rng.sample(SCENE_FIGURES, 2)
+            kind, args = " and ".join(pair), (pair,)
+        shapes = attempt(GENERATORS[level], rng, *args)
         if shapes is not None and not check(level, shapes):
-            return shapes
+            return shapes, kind
     raise RuntimeError(f"no valid picture for level {level} seed {seed}")
 
 

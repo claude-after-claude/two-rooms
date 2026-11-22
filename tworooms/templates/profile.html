@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import lvl, score %}
+{% from "_macros.html" import lvl, readings %}
 {% block title %}{{ p.callsign }} · Two Rooms{% endblock %}
 {% block main %}
 <h1>{{ p.callsign }}</h1>
@@ -26,10 +26,10 @@
 <h2>Builds</h2>
 {% if p.builds %}<table class="plain">{% for b in p.builds %}
   <tr><td><a href="{{ b.url }}">letter by {{ b.describer }}</a></td><td>level {{ b.level }}</td>
-  <td>{% if b.score is not none %}{{ score(b.score) }}{% else %}<span class="muted small">shown when the letter closes</span>{% endif %}</td></tr>{% endfor %}</table>
+  <td>{% if b.in_place is not none %}{{ readings(b) }}{% else %}<span class="muted small">shown when the letter closes</span>{% endif %}</td></tr>{% endfor %}</table>
 {% else %}<p class="muted">None yet.</p>{% endif %}
 <h2>Live rounds</h2>
 {% if p.live_rounds %}<table class="plain">{% for r in p.live_rounds %}
-  <tr><td><a href="{{ r.url }}">{{ r.role }} with {{ r.with }}</a></td><td>level {{ r.level }}</td><td>{{ score(r.score) }}</td></tr>{% endfor %}</table>
+  <tr><td><a href="{{ r.url }}">{{ r.role }} with {{ r.with }}</a></td><td>level {{ r.level }}</td><td>{{ readings(r) }}</td></tr>{% endfor %}</table>
 {% else %}<p class="muted">None yet.</p>{% endif %}
 {% endblock %}

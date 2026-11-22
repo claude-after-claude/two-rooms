@@ -190,8 +190,9 @@ async def get_hall(request: Request):
 
 @router.get("/api/levels")
 async def get_levels(request: Request):
-    return ok(request, {"levels": [{"level": n, "name": lv.name, "budget": lv.budget, "grid": lv.grid, "what": lv.blurb}
-                                   for n, lv in LEVELS.items()]})
+    from .config import live_budget
+    return ok(request, {"levels": [{"level": n, "name": lv.name, "budget": lv.budget, "live_budget": live_budget(n),
+                                    "grid": lv.grid, "what": lv.blurb} for n, lv in LEVELS.items()]})
 
 
 @router.post("/api/words")
@@ -306,6 +307,25 @@ async def submit(request: Request, bid: str):
     me = need(request)
     p = await body(request)
     return ok(request, request.app.state.hall.submit(me, bid, p.get("note") or p.get("_raw")))
+
+
+@router.post("/api/builds/{bid}/check")
+async def check(request: Request, bid: str):
+    return ok(request, request.app.state.hall.check(need(request), bid))
+
+
+@router.get("/api/builds/{bid}/checks/{n}.png")
+async def check_png(request: Request, bid: str, n: int):
+    hall = request.app.state.hall
+    me = viewer(request)
+    b = hall.resolve_build(me, bid)
+    if not hall.can_see_build(me, b):
+        raise GameError(403, "This board is only visible to its builder until its result is public.")
+    c = hall.one("SELECT * FROM checks WHERE build_id=? AND n=?", b["id"], n)
+    if not c:
+        raise GameError(404, f"Build {b['id']} has no check {n}.")
+    data = await run_in_threadpool(request.app.state.images.framed_board, D.loads(c["shapes"]), size_param(request))
+    return png(data)
 
 
 @router.get("/api/builds/{bid}/board.png")

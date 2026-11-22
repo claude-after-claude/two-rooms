@@ -48,14 +48,14 @@ def test_client_plays_letters_and_live(server, tmp_path, capsys):
     letter = re.search(r"Letter (\w+):", out).group(1)
     picture = Path(re.search(r"saved at\n\s+(\S+)", out).group(1))
     assert picture.exists() and picture.read_bytes()[:4] == b"\x89PNG"
-    assert "budget: 60 words" in out
-    assert "counting word" in alice("send", letter, "the red one is twelve wide", ok=False)
-    checked = alice("send", letter, "Four blocks, all red.", "--check")
-    assert "Would be refused" in checked and "Counting the shapes" in checked and "nothing was sent" not in checked
-    assert "would be accepted" in alice("send", letter, "Blocks, all red.", "--check").lower()
+    assert "budget: 25 words" in out
+    assert "past nine" in alice("send", letter, "the red one is twelve wide", ok=False)
+    checked = alice("send", letter, "Five quarters of the board.", "--check")
+    assert "Would be refused" in checked and "counting in fractions" in checked
+    assert "would be accepted" in alice("send", letter, "Two blocks, both red.", "--check").lower()
     assert app.state.hall.letter(letter)["status"] == "draft", "--check must not send"
     words = tmp_path / "a" / "words.txt"
-    words.write_text("A red block low on the left, a third of the board wide. A blue square high on the right.")
+    words.write_text("Two blocks. Red, low on the left, a third of the board wide. Blue square, high right.")
     assert "is open" in alice("send", letter, "--file", str(words))
 
     assert letter in bob("letters")
@@ -63,15 +63,20 @@ def test_client_plays_letters_and_live(server, tmp_path, capsys):
     build = re.search(r"Build (\w+) of letter", out).group(1)
     assert "a third of the board wide" in out
     out = bob("place", build, "rect", "red", "1", "1", "3.3", "2")
-    assert "Placed 1. rect red 1 1 3.25 2" in out and "rounded" in out
+    assert "Placed 1. rect red 1 1 3.25 2" in out and out.count("Rounded to steps of 1/8") == 1
+    assert len(out.strip().splitlines()) == 2, "place prints one line, and one for the rounding"
     bob("place", build, "ellipse", "blue", "7", "8", "1")
     assert "Removed ellipse blue 7 8 1 1" in bob("undo", build)
     bob("place", build, "triangle", "green", "6", "6", "9", "6", "6", "9")
     out = bob("board", build)
     assert Path(re.search(r"saved at\n\s+(\S+)", out).group(1)).exists()
     assert "error" in bob("place", build, "rect", "pink", "1", "1", "1", "1", ok=False)
+    out = bob("check", build)
+    assert "Check 1 of 2" in out and "In place:" in out and "Slid to fit:" in out and "1 check left" in out
     out = bob("submit", build, "--note", "the blue square was a guess")
-    assert re.search(r"Score \d+\.\d", out) and "The picture's true shapes" in out
+    assert re.search(r"In place: +\d+%", out) and re.search(r"Slid to fit: +\d+%", out)
+    assert "Most of the difference is in" in out and "You are the first to build this letter" in out
+    assert "The picture's true shapes" in out
     assert "the blue square was a guess" in alice("letter", letter)
 
     # live, with the long-poll
@@ -83,7 +88,7 @@ def test_client_plays_letters_and_live(server, tmp_path, capsys):
     word = re.search(r"this round's word is (\w+)", out).group(1)
     assert word in bob("look", match)
     nxt = bob("say", match, "Twelve of them.", ok=False)
-    assert "counting word" in nxt
+    assert "past nine" in nxt
     assert "POST /api" not in bob("match", match) and f"tworooms.py say {match}" in bob("match", match)
     caught_up = alice("match", match, "--wait", "5")
     assert "new · joined: bob" in caught_up and "round 1 started" in caught_up, "news since alice last looked comes at once"
@@ -103,7 +108,7 @@ def test_client_plays_letters_and_live(server, tmp_path, capsys):
     assert word in alice("look", match)
     alice("place", match, "rect", "red", "0", "0", "10", "5")
     out = alice("submit", match)
-    assert "Score" in out and "The match is over" in out
+    assert "In place:" in out and "That was the last round" in out
     assert "finished" in bob("match", match)
     assert "callsign" in Player(base, tmp_path, capsys)("me", ok=False)
 

@@ -116,7 +116,33 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS events_match ON events(match_id, id);
 CREATE INDEX IF NOT EXISTS events_public ON events(public, id);
+CREATE TABLE IF NOT EXISTS checks (
+    id INTEGER PRIMARY KEY,
+    build_id TEXT NOT NULL,
+    n INTEGER NOT NULL,
+    shapes TEXT NOT NULL,
+    in_place REAL NOT NULL,
+    slid REAL NOT NULL,
+    slide_dx INTEGER NOT NULL,
+    slide_dy INTEGER NOT NULL,
+    created REAL NOT NULL,
+    UNIQUE(build_id, n)
+);
 """
+
+# Columns added after the first play. connect() adds any that an older database lacks.
+ADDED_COLUMNS = {
+    "builds": [("slid", "REAL"), ("slide_dx", "INTEGER"), ("slide_dy", "INTEGER")],
+    "pictures": [("kind", "TEXT")],
+}
+
+
+def migrate(conn: sqlite3.Connection):
+    for table, cols in ADDED_COLUMNS.items():
+        have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for name, kind in cols:
+            if name not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
 
 
 def connect(path: str | Path) -> sqlite3.Connection:
@@ -127,6 +153,7 @@ def connect(path: str | Path) -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
+    migrate(conn)
     return conn
 
 

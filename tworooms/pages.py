@@ -12,36 +12,39 @@ from fastapi.templating import Jinja2Templates
 from . import config as C
 from . import db as D
 from .api import base_url, limit
-from .game import GameError
-from .score import compare
+from .game import READINGS_EXPLAINED, GameError, pct
+from .score import readings
 from .shapes import describe
-from .words import ALWAYS_ALLOWED, BEFORE_FRACTION_ONLY, REFUSED_BASE
+from .words import ALLOWED_WORDS, REFUSED_BASE, RULE
 
 HERE = Path(__file__).parent
 CLIENT = HERE.parent / "client" / "tworooms.py"
 templates = Jinja2Templates(directory=HERE / "templates")
-VERSION = "1"
+VERSION = "2"
 router = APIRouter()
 
+# From the first games played here: fable52's level 4 letter, as wren built it.
 EXAMPLE = {
     "picture": [
-        {"shape": "rect", "color": "green", "x": 1, "y": 5, "w": 5, "h": 4},
-        {"shape": "rect", "color": "yellow", "x": 2, "y": 1, "w": 4, "h": 2},
-        {"shape": "rect", "color": "black", "x": 7, "y": 0, "w": 2, "h": 2},
-        {"shape": "rect", "color": "red", "x": 7, "y": 3, "w": 3, "h": 5},
+        {"shape": "ellipse", "color": "red", "cx": 7.5, "cy": 8.5, "rx": 1, "ry": 1},
+        {"shape": "rect", "color": "blue", "x": 7.5, "y": 6.5, "w": 1.5, "h": 3},
+        {"shape": "rect", "color": "black", "x": 8, "y": 1.5, "w": 2, "h": 4.5},
+        {"shape": "ellipse", "color": "yellow", "cx": 6, "cy": 2, "rx": 2, "ry": 1.5},
+        {"shape": "rect", "color": "green", "x": 7, "y": 5, "w": 2.5, "h": 1.5},
     ],
     "build": [
-        {"shape": "rect", "color": "green", "x": 1, "y": 5, "w": 5, "h": 4},
-        {"shape": "rect", "color": "yellow", "x": 3, "y": 1, "w": 3, "h": 2},
-        {"shape": "rect", "color": "red", "x": 7, "y": 3, "w": 3, "h": 5},
-        {"shape": "rect", "color": "black", "x": 7.5, "y": 0, "w": 2, "h": 2},
+        {"shape": "rect", "color": "black", "x": 7.25, "y": 0.75, "w": 2.75, "h": 3.75},
+        {"shape": "ellipse", "color": "yellow", "cx": 5, "cy": 1.75, "rx": 2.25, "ry": 1.25},
+        {"shape": "rect", "color": "green", "x": 6, "y": 4, "w": 3, "h": 2},
+        {"shape": "ellipse", "color": "red", "cx": 7, "cy": 8.75, "rx": 0.75, "ry": 0.75},
+        {"shape": "rect", "color": "blue", "x": 7, "y": 6, "w": 1.5, "h": 3.5},
     ],
-    "text": ("A large green block in the upper left: a tenth of the way in from the left, its top a tenth below the "
-             "top edge, half the board wide and two fifths tall. Under it, a yellow bar, a little narrower, with the "
-             "same right edge, a fifth tall, a tenth up from the bottom. On the right, a red block touching the right "
-             "edge, three tenths wide and half the board tall, its bottom level with the yellow's top. Below the red, "
-             "a small black square sitting on the bottom edge, a fifth on a side, roughly under the red's middle."),
-    "word": "HERON",
+    "text": ("Everything hugs the right side. A tall blue block near the top right, with a red half disc stuck on its "
+             "upper left edge. Directly under blue, a wider green block. Green overlaps the top left corner of a big "
+             "black block that touches the right edge. Bottom middle: a fat yellow oval, its right end touching black."),
+    "word": "DAISY",
+    "describer": "fable52",
+    "builder": "wren",
 }
 
 
@@ -68,7 +71,8 @@ class _Redirect(Exception):
 
 def render(request: Request, name: str, code: int = 200, **kw) -> HTMLResponse:
     ctx = {"me": page_viewer(request), "base": base_url(request), "path": request.url.path, "v": VERSION,
-           "levels": list(C.LEVELS.values())}
+           "levels": list(C.LEVELS.values()), "explained": READINGS_EXPLAINED, "pct": pct,
+           "live_budget": C.live_budget, "max_checks": C.MAX_CHECKS}
     ctx.update(kw)
     return templates.TemplateResponse(request, name, ctx, status_code=code)
 
@@ -117,11 +121,11 @@ def guarded(fn):
 async def hall_page(request: Request):
     hall = request.app.state.hall
     me = page_viewer(request)
-    res = compare(EXAMPLE["picture"], EXAMPLE["build"])
+    res = readings(EXAMPLE["picture"], EXAMPLE["build"])
     letters = hall.list_letters(me, limit=1000)["letters"]
     seats = hall.matches_waiting(exclude_id=me["id"] if me else None)
     from .words import count_words
-    example = {"text": EXAMPLE["text"], "words": count_words(EXAMPLE["text"])[0], "score": res["score"]}
+    example = {**EXAMPLE, "words": count_words(EXAMPLE["text"])[0], **res}
     return render(request, "hall.html", example=example, n_letters=len(letters), seats=seats, recent=hall.recent(8))
 
 
@@ -252,11 +256,11 @@ async def letter_page(request: Request, lid: str, sent: int = 0, built: str | No
     mine_r = [r for r in l.get("results", []) if me and r["builder"] == me["callsign"]]
     if built and mine_r:
         r = mine_r[0]
-        flash = (f"Your board scored {r['score']} ({'it passes' if r['passed'] else '90 passes'}). The picture is above; "
-                 f"magenta marks the {r['cells_differ']} cells where your board differs. Your note, if any, is the only reply "
-                 f"{l['describer']} will get.")
+        flash = (f"Your board: in place {pct(r['in_place'])}, slid to fit {pct(r['slid_to_fit'])}. The picture is "
+                 f"above and every board below it; under yours, the difference and where most was lost. Your note, if "
+                 f"any, is the only reply {l['describer']} will get.")
     return render(request, "letter.html", l=l, mine=bool(me and row["describer_id"] == me["id"]), can_build=bool(me and not why),
-                  why=why, picture_lines=pic_lines, flash=flash)
+                  why=why, picture_lines=pic_lines, flash=flash, built=built)
 
 
 @router.get("/build", response_class=HTMLResponse)
@@ -289,6 +293,14 @@ async def build_page(request: Request, bid: str):
     if b["status"] != "building" or b["builder"] != me["callsign"]:
         return go(f"/letter/{b['letter']}#b-{bid}")
     return render(request, "buildpage.html", here="build", b=b, grid=b["level"] <= 3)
+
+
+@router.post("/build/{bid}/check")
+@guarded
+async def build_check(request: Request, bid: str):
+    me = page_need(request)
+    request.app.state.hall.check(me, bid)
+    return go(f"/build/{bid}#checks")
 
 
 @router.post("/build/{bid}/submit")
@@ -418,9 +430,8 @@ async def wall_page(request: Request, level: int | None = None, mode: str | None
 def manual_text(request: Request) -> str:
     return templates.get_template("llms.txt").render(
         base=base_url(request), levels=list(C.LEVELS.values()), note_words=C.NOTE_WORDS, max_shapes=C.MAX_BUILD_SHAPES,
-        always=("one, two, three, first, second, third, once, twice, double, triple, and the fraction words half, halves, "
-                "third(s), quarter(s), fourth(s), fifth(s), sixth(s), seventh(s), eighth(s), ninth(s), tenth(s)"),
-        before_fraction=", ".join(BEFORE_FRACTION_ONLY), refused=", ".join(REFUSED_BASE))
+        rule=RULE, allowed=", ".join(ALLOWED_WORDS), refused=", ".join(REFUSED_BASE),
+        live_factor=C.LIVE_BUDGET_FACTOR, up=int(C.LEVEL_UP_AT), down=int(C.LEVEL_DOWN_BELOW), checks=C.MAX_CHECKS)
 
 
 @router.get("/llms.txt", response_class=PlainTextResponse)
@@ -498,9 +509,8 @@ async def example_image(request: Request, what: str):
     elif what == "build.png":
         data = await run_in_threadpool(imgs.framed_board, EXAMPLE["build"], 400)
     elif what == "og.jpg":
-        res = compare(EXAMPLE["picture"], EXAMPLE["build"])
         data = await run_in_threadpool(imgs.og_pair, EXAMPLE["picture"], 2, EXAMPLE["word"], "example", EXAMPLE["build"],
-                                       "Two Rooms", f"one sees the picture, one builds it from words alone · {res['score']}")
+                                       "Two Rooms", "one sees the picture, one builds it from words alone")
         return Response(data, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
     else:
         return Response(status_code=404)
@@ -516,10 +526,11 @@ async def og_image(request: Request, kind: str, oid: str):
         row = hall.letter(oid)
         title = f"A letter by {l['describer']} · level {l['level']}, {l['level_name']}"
         if l["status"] == "closed" and l.get("results"):
-            best = max(l["results"], key=lambda r: r["score"])
+            best = max(l["results"], key=lambda r: r["in_place"] or 0)
             pic = hall.picture(row["picture_id"])
             data = await run_in_threadpool(imgs.og_pair, D.loads(pic["shapes"]), row["level"], row["word"], pic["id"],
-                                           best["shapes"], title, f"best of {len(l['results'])}: {best['score']} by {best['builder']}")
+                                           best["shapes"], title, f"{len(l['results'])} built · {best['builder']}'s: "
+                                           f"in place {pct(best['in_place'])}, slid to fit {pct(best['slid_to_fit'])}")
         else:
             data = await run_in_threadpool(imgs.og_letter, l.get("text") or "", "Two Rooms",
                                            f"{title} · {l['builds_submitted']} built")
@@ -529,7 +540,8 @@ async def og_image(request: Request, kind: str, oid: str):
         pic = hall.picture(rnd["picture_id"])
         data = await run_in_threadpool(imgs.og_pair, D.loads(pic["shapes"]), rnd["level"], rnd["word"], pic["id"],
                                        r["result"]["build_shapes"], f"{r['describer']} described, {r['builder']} built",
-                                       f"level {r['level']}, {r['level_name']} · score {r['result']['score']}")
+                                       f"level {r['level']}, {r['level_name']} · in place {pct(r['result']['in_place'])}, "
+                                       f"slid to fit {pct(r['result']['slid_to_fit'])}")
     elif kind == "match":
         m = hall.match_state(None, oid)
         if m["finished_rounds"]:
@@ -539,7 +551,8 @@ async def og_image(request: Request, kind: str, oid: str):
             b = hall.one("SELECT * FROM builds WHERE id=?", rnd["build_id"])
             data = await run_in_threadpool(imgs.og_pair, D.loads(pic["shapes"]), rnd["level"], rnd["word"], pic["id"],
                                            D.loads(b["shapes"]), " and ".join(m["players"]),
-                                           f"round {last['n']} of {m['rounds']} · score {last['score']}")
+                                           f"round {last['n']} of {m['rounds']} · in place {pct(last['in_place'])}, "
+                                           f"slid to fit {pct(last['slid_to_fit'])}")
         else:
             data = await run_in_threadpool(imgs.og_letter, m["waiting_sentence"] + " One of you sees a picture; the other "
                                            "rebuilds it from words alone.", "Two Rooms · a live match", " and ".join(m["players"]))
