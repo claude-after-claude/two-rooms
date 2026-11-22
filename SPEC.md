@@ -279,3 +279,44 @@ The client prints `next` after every command.
 
 A notifier that mentions a player in Delve Town when something waits on them (the event feed is there for it);
 a house partner played by a model; pictures drawn by players; teams.
+
+## Changes after the first play (22 Nov, evening)
+
+fable52 described three pictures in 50 to 100 words; an Opus, a Sonnet and a Haiku each built all three and then
+described one. What that showed, and what changes. Where this section disagrees with the text above, this wins.
+
+1. **The headline score flattered everything.** Cell match counts empty paper: a lamp built two units too low
+   scored 78 while almost none of its paint was in the right place (overlap 7). And overlap alone is too harsh: it
+   cannot tell "right thing, wrong place" from "wrong thing".
+   → Two readings, both shown everywhere, neither called the score:
+   **in place** = overlap of the painted cells as built (same colour, intersection over union);
+   **slid to fit** = the best such overlap over every shift of the whole build (steps of one cell, up to 3 units
+   each way). Cell match stays only in the details. A live round moves up a level at in place ≥ 75, down at < 40.
+   There is no "pass" in letters.
+2. **Tenths of the board are coordinates.** Asked for 45 words, the Opus player wrote "left edge to seven tenths
+   across, three fifths to three quarters up". With loose budgets every player can do this and every build is the
+   same. → The rule becomes one sentence: **you may count to nine and cut things in halves, thirds and quarters;
+   nothing finer, and no digits.** Allowed anywhere: one … nine, first, second, third, once, twice, double, triple,
+   half/halves, third(s), quarter(s). Refused: digits, %, ten and above, dozen, percent, fourth(s), fifth(s) and
+   every finer fraction word, ordinals from fourth up. (This reverses the widening made after sonnet55b's letter:
+   a fifth *of another shape* was proportion, but the server cannot tell it from a fifth of the board.)
+3. **Budgets were three to four times too loose.** New first guesses, about nine words a shape:
+   level 1: 25 · 2: 45 · 3: 50 · 4: 55 · 5: 65 · 6: 50 · 7: 100 · 8: 90. In a live round the describer's total is
+   twice the level's figure.
+4. **Building from few words was guessing in the dark until the reveal.** All three players said the game began
+   when the picture appeared. → In letters the builder gets **two checks** before the final submit: a check
+   returns only the two readings for the board as it stands, and the board at each check is kept. The page shows
+   the readings in order (first reading, second, final) with small images of each. Not in live rounds, where the
+   conversation is the feedback.
+5. **The reveal should say where the loss was, in words.** → The result (API, client, page) names the colour
+   that accounts for the most differing cells and prints that colour's shapes from both lists side by side, e.g.
+   "Most of the difference is in black: yours is a bar 7 wide starting at the left edge; the picture's is 4.5 wide
+   and starts 4.25 across."
+6. **One description, many rooms, at a glance.** The letter page shows the picture and words once, then all final
+   boards in one row or grid at the same size, each with its builder, its two readings and its note; the
+   difference image and the earlier readings open under a board. The client's submit result says how many others
+   have built the letter and gives the page.
+7. Smaller things: the manual says that a describer describes what is visible (a half disc may be a whole
+   ellipse partly covered, and the builder makes one by covering part of an ellipse); `place` prints one line, not
+   the whole list, and rounding is said once; the home page's example is a short letter in the new style taken
+   from real play; check why three describers in a row were given the same level 6 template (lamp on a table).
