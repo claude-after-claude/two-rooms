@@ -55,6 +55,15 @@ def key(*parts) -> str:
 
 # ---------------------------------------------------------------- outlines with wobble
 
+def _bleed(true: float, wobbled: float) -> float:
+    """A point that lies on the board's edge is pushed past it, so a shape along the edge stays flush with the frame."""
+    if abs(true) < 1e-9:
+        return -0.2
+    if abs(true - BOARD) < 1e-9:
+        return BOARD + 0.2
+    return wobbled
+
+
 def _noise_fn(rng, amp):
     waves = [(rng.uniform(0.9, 1.3), rng.uniform(0, 2 * math.pi), 0.35),
              (rng.uniform(2.0, 3.0), rng.uniform(0, 2 * math.pi), 0.40),
@@ -86,7 +95,7 @@ def _polygon_outline(corners, noise, step=0.06):
                 nx, ny = nx / m, ny / m
             else:
                 nx, ny = normals[i]
-            pts.append((x + d * nx, y + d * ny))
+            pts.append((_bleed(x, x + d * nx), _bleed(y, y + d * ny)))
         s += L
     return pts
 
@@ -117,13 +126,6 @@ def outline(s: dict, rng, amp: float = WOBBLE):
 
 # ---------------------------------------------------------------- the describer's picture
 
-def _bleed(v: float) -> float:
-    """A point within the wobble of the board's edge is pushed past it, so edge-touching shapes stay flush."""
-    if v < 0.06:
-        return -0.2
-    if v > BOARD - 0.06:
-        return BOARD + 0.2
-    return v
 
 
 def _smooth_noise(rng, shape, cells):
@@ -150,7 +152,7 @@ def painted(shapes: list[dict], level: int, word: str, seed: str, size: int = 80
     paper *= (1 + 0.010 * _smooth_noise(rng, (S, S), (220, 220)))[..., None]
     canvas = paper
     for s in shapes:
-        pts = [(_bleed(x), _bleed(y)) for x, y in outline(s, rng_py)]
+        pts = outline(s, rng_py)
         poly = [(x * u, (BOARD - y) * u) for x, y in pts]
         xs, ys = [p[0] for p in poly], [p[1] for p in poly]
         bx0, by0 = max(0, int(min(xs)) - 4), max(0, int(min(ys)) - 4)

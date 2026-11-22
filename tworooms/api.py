@@ -194,6 +194,23 @@ async def get_levels(request: Request):
                                    for n, lv in LEVELS.items()]})
 
 
+@router.post("/api/words")
+async def check_words(request: Request):
+    """Count words and apply the number rule without sending anything."""
+    from .words import Refused, check_message, count_words
+    me = viewer(request)
+    p = await body(request)
+    text = text_of(p)
+    budget = p.get("budget")
+    n, _ = count_words(text)
+    try:
+        check_message(text, budget_left=int(budget) if budget not in (None, "") else None,
+                      exempt=(me["callsign"],) if me not in (None, "admin") else (), unit="message")
+        return ok(request, {"words": n, "ok": True, "next": "It would be accepted."})
+    except Refused as e:
+        return ok(request, {"words": n, "ok": False, "error": str(e).replace("Not sent: ", "Would be refused: ")})
+
+
 @router.get("/api/events")
 async def get_events(request: Request, since: int = 0):
     return ok(request, request.app.state.hall.events(since))

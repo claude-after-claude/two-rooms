@@ -306,3 +306,53 @@ def test_rate_limit_on_new_callsigns(tmp_path):
     with serve(tmp_path, rate_limits=True) as (base, app):
         codes = [httpx.post(base + "/api/players", json={"callsign": f"x{i}"}).status_code for i in range(11)]
         assert codes[:10] == [201] * 10 and codes[10] == 429
+
+
+def test_word_check_spends_nothing(server):
+    base, app = server
+    r = httpx.post(base + "/api/words", json={"text": "a red block, four fifths across", "budget": 6})
+    assert r.json() == {"words": 6, "ok": True, "next": "It would be accepted."}
+    r = httpx.post(base + "/api/words", json={"text": "a red block, four fifths across", "budget": 5})
+    assert not r.json()["ok"] and "5 left" in r.json()["error"]
+    r = httpx.post(base + "/api/words", json={"text": "eleven blocks"})
+    assert not r.json()["ok"] and r.json()["error"].startswith("Would be refused")
+
+
+def test_time_rules(server):
+    """Idle builds give their slot back, letters close after seven days, idle matches are abandoned."""
+    base, app = server
+    hall = app.state.hall
+    a, b, c = (Client.new(base, n) for n in ("alice", "bob", "carol"))
+    lid = a.post("/api/letters", {"level": 1})["letter"]
+    a.post(f"/api/letters/{lid}/send", {"text": "two blocks"})
+    bid = b.post(f"/api/letters/{lid}/builds")["build"]
+    day = 86400
+    hall.db.execute("UPDATE builds SET updated=updated-? WHERE id=?", (2 * day, bid))
+    hall.sweep(force=True)
+    assert b.get(f"/api/builds/{bid}")["status"] == "expired"
+    assert "expired" in b.post(f"/api/builds/{bid}/submit", expect=409)["error"]
+    hall.db.execute("UPDATE letters SET sent=sent-? WHERE id=?", (8 * day, lid))
+    hall.sweep(force=True)
+    assert a.get(f"/api/letters/{lid}")["close_reason"] == "seven days passed"
+    m = a.post("/api/matches", {"open": True})["match"]
+    c.post(f"/api/matches/{m}/join")
+    hall.db.execute("UPDATE matches SET updated=updated-? WHERE id=?", (8 * day, m))
+    hall.sweep(force=True)
+    assert a.get(f"/api/matches/{m}")["status"] == "abandoned"
+    assert Client(base).get(f"/api/letters/{lid}")["status"] == "closed"
+
+
+def test_stale_board_waits_on_the_builder(server):
+    base, app = server
+    hall = app.state.hall
+    a, b = Client.new(base, "alice"), Client.new(base, "bob")
+    m = a.post("/api/matches", {"open": False})["match"]
+    b.post(f"/api/matches/{m}/join")
+    b.post(f"/api/matches/{m}/say", {"text": "a red block"})
+    a.post(f"/api/matches/{m}/say", {"text": "where?"})
+    assert a.get(f"/api/matches/{m}")["waiting_on"] == "bob"
+    a.post(f"/api/builds/{m}/place", {"shape": "rect", "color": "red", "x": 1, "y": 1, "w": 2, "h": 2})
+    hall.db.execute("UPDATE builds SET updated=updated-90000")
+    hall.db.execute("UPDATE messages SET created=created-90000")
+    st = a.get(f"/api/matches/{m}")
+    assert st["waiting_on"] == "alice" and "submit" in st["waiting_sentence"]

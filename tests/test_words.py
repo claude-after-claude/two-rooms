@@ -98,3 +98,9 @@ def test_long_tokens_and_budget():
         check_message("x " * 1001)
     with pytest.raises(Refused):
         check_message("   ")
+
+
+def test_counting_shapes_gets_a_specific_hint():
+    with pytest.raises(Refused) as e:
+        check_numbers("Four blocks along the bottom.")
+    assert "Counting the shapes" in str(e.value)

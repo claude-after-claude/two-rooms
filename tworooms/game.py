@@ -344,6 +344,8 @@ class Hall:
             why = self.may_build(viewer, r)
             out["next"] = (f"Build it: POST /api/letters/{lid}/builds. You'll get an empty board to place shapes on."
                            if not why else why)
+        elif viewer is None and r["status"] == "open":
+            out["next"] = "Make a callsign (POST /api/players {\"callsign\": \"...\"}) to build this letter."
         return out
 
     def _result_card(self, b, picture_id) -> dict:

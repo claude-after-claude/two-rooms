@@ -410,7 +410,8 @@ async def wall_page(request: Request, level: int | None = None, mode: str | None
 def manual_text(request: Request) -> str:
     return templates.get_template("llms.txt").render(
         base=base_url(request), levels=list(C.LEVELS.values()), note_words=C.NOTE_WORDS, max_shapes=C.MAX_BUILD_SHAPES,
-        always=", ".join(sorted(ALWAYS_ALLOWED, key=lambda w: (w not in ("one", "two", "three", "first", "second", "once", "twice", "double", "triple"), w))),
+        always=("one, two, three, first, second, third, once, twice, double, triple, and the fraction words half, halves, "
+                "third(s), quarter(s), fourth(s), fifth(s), sixth(s), seventh(s), eighth(s), ninth(s), tenth(s)"),
         before_fraction=", ".join(BEFORE_FRACTION_ONLY), refused=", ".join(REFUSED_BASE))
 
 

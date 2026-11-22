@@ -5,7 +5,7 @@
     tworooms.py hall                           # what you can do right now
     tworooms.py me                             # what is waiting on you
     tworooms.py describe [--level N]           # saves the picture to a file and prints its path and the budget
-    tworooms.py send LETTER "text"  |  send LETTER --file words.txt
+    tworooms.py send LETTER "text"  |  send LETTER --file words.txt   (--check: count and check, send nothing)
     tworooms.py letters [--level N]            # open letters I may build
     tworooms.py letter LETTER                  # one letter, with its results when you may see them
     tworooms.py take LETTER                    # prints the words, starts a build
@@ -18,7 +18,7 @@
     tworooms.py invite [--rounds N --level N]  |  open [...]  |  seat  |  join MATCH
     tworooms.py match MATCH [--wait 60]        # state and new chat; with --wait it blocks until something changes
     tworooms.py look MATCH                     # the picture (describer) or my board (builder), saved to a file
-    tworooms.py say MATCH "text"
+    tworooms.py say MATCH "text"              # --check counts and checks without sending
 
 In a live match, BUILD can be the match id. Images go to ./tworooms-images (change with --out).
 Server: --server URL, or TWOROOMS_SERVER, or the one this file was downloaded from.
@@ -104,9 +104,45 @@ def save_image(api: Api, url: str, out: Path, name: str) -> Path:
     return path
 
 
+# The server writes `next` for any client, in HTTP terms; say it in this client's commands instead.
+_CLI = [
+    (r'POST /api/letters \{"level": (\w+)\}', r"tworooms.py describe --level \1"),
+    (r'POST /api/letters \{\\?"level\\?": N\}', "tworooms.py describe --level N"),
+    (r"POST /api/letters/(\w+|<id>)/send(?: \{[^}]*\})?", r'tworooms.py send \1 "..."'),
+    (r"POST /api/letters/(\w+|<id>)/builds", r"tworooms.py take \1"),
+    (r"POST /api/letters/(\w+|<id>)/close", r"tworooms.py close \1"),
+    (r"GET /api/letters/(\w+)/picture\.png", r"tworooms.py letter \1 --save"),
+    (r"GET /api/letters\b", "tworooms.py letters"),
+    (r"POST /api/builds/(\w+)/place(?: with e\.g\. \{[^}]*\})?", r"tworooms.py place \1 rect red 2 1 3 2"),
+    (r"GET /api/builds/(\w+)/board\.png(?:\?grid=1)?", r"tworooms.py board \1"),
+    (r"POST /api/builds/(\w+)/submit(?: \(optionally \{[^}]*\}\))?", r'tworooms.py submit \1 --note "..."'),
+    (r"PUT /api/builds/(\w+)/shapes|PUT /shapes", "replace shapes"),
+    (r"GET /api/builds/(\w+)", r"tworooms.py shapes \1"),
+    (r"POST /api/matches/(\w+)/say(?: \{[^}]*\})?", r'tworooms.py say \1 "..."'),
+    (r"GET /api/matches/(\w+)\?since=<last_event>&wait=60", r"tworooms.py match \1 --wait 60"),
+    (r"GET /api/matches/(\w+)\?wait=60", r"tworooms.py match \1 --wait 60"),
+    (r"GET /api/matches/(\w+)/picture\.png", r"tworooms.py look \1"),
+    (r"POST /api/matches/(\w+)/join", r"tworooms.py join \1"),
+    (r"GET /api/matches/(\w+)", r"tworooms.py match \1"),
+    (r'POST /api/matches \{"open": false\}', "tworooms.py invite"),
+    (r"POST /api/matches", "tworooms.py invite"),
+    (r"POST /api/seat", "tworooms.py seat"),
+    (r"GET /api/hall", "tworooms.py hall"),
+    (r"GET /api/me", "tworooms.py me"),
+    (r"POST /api/players(?: \{[^}]*\})?", "tworooms.py callsign NAME"),
+]
+
+
+def cli_next(text: str) -> str:
+    import re
+    for pat, rep in _CLI:
+        text = re.sub(pat, rep, text)
+    return text
+
+
 def show_next(d: dict):
     if d.get("next"):
-        print(f"\nnext: {d['next']}")
+        print(f"\nnext: {cli_next(d['next'])}")
 
 
 def wrap(text: str, indent: str = "  ") -> str:
@@ -184,9 +220,21 @@ def cmd_send(api: Api, a):
     text = Path(a.file).read_text() if a.file else a.text
     if not text:
         raise Fail('give the words:  send LETTER "text"  or  send LETTER --file words.txt')
+    if a.check:
+        budget = api.get(f"/api/letters/{a.letter}")["budget"]
+        _check(api, text, budget, f"this letter's budget is {budget}")
+        return
     d = api.post(f"/api/letters/{a.letter}/send", {"text": text})
     print(f"Letter {d['letter']} is open: {d['words']} words (budget {d['budget']}). Page: {d['url']}")
     show_next(d)
+
+
+def _check(api: Api, text: str, budget, what: str):
+    d = api.post("/api/words", {"text": text, "budget": budget})
+    if d["ok"]:
+        print(f"{d['words']} words ({what}). It would be accepted; nothing was sent.")
+    else:
+        print(f"{d['words']} words ({what}). {d['error']}")
 
 
 def _letter_lines(l):
@@ -316,7 +364,9 @@ def cmd_submit(api: Api, a):
     api.need_key()
     d = api.post(f"/api/builds/{a.build}/submit", {"note": a.note} if a.note else {})
     r = d["result"]
-    print(f"Score {r['score']} (overlap of the coloured area {r['overlap']}). {'Passed.' if r['passed'] else 'Not passed (90 passes).'}")
+    print(f"Score {r['score']}: the share of the board's 6,400 cells whose colour (or emptiness) matches. "
+          f"{'Passed (90 passes).' if r['passed'] else 'Not passed: 90 passes.'}")
+    print(f"Overlap {r['overlap']}: of the cells coloured on either board, the share coloured the same (ignores empty paper).")
     pic = save_image(api, r["picture_url"], a.out, f"build-{d['build']}-picture.png")
     dif = save_image(api, r["diff_url"], a.out, f"build-{d['build']}-diff.png")
     print(f"The picture: {pic}\nWhere you differ: {dif}\nThe page: {r['page_url']}")
@@ -382,7 +432,7 @@ def _remember(api: Api, d):
     save_config(api.cfg)
 
 
-def _print_match(api: Api, d, a, new_events=None):
+def _print_match(api: Api, d, a, new_events=None, compact=False):
     mid = d["match"]
     head = f"Match {mid} · {d['status']}"
     cur = d.get("current")
@@ -392,10 +442,11 @@ def _print_match(api: Api, d, a, new_events=None):
             head += f" · this round's word is {cur['word']}"
     print(head)
     print(d.get("waiting_sentence", ""))
+    new_msgs = {e.get("message") for e in new_events or [] if e["kind"] == "said"}
     if new_events:
         for e in new_events:
             if e["kind"] == "said":
-                print(f"  new · {e['from']} ({e['role']}, {e['words']} words): {e['text']}")
+                continue
             elif e["kind"] == "round_started":
                 print(f"  new · round {e['round']} started: level {e['level']}, {e['describer']} describes, "
                       f"{e['builder']} builds, word {e['word']}")
@@ -407,13 +458,14 @@ def _print_match(api: Api, d, a, new_events=None):
         you = d["you"]["role"]
         print(f"You are the {you}. {cur['describer']} describes, {cur['builder']} builds. "
               f"Describer words: {cur['describer_words_used']} used, {cur['describer_words_left']} left.")
-        if cur.get("chat") is not None:
-            print("Chat this round:" if cur["chat"] else "Chat this round: nothing yet.")
+        if cur.get("chat") is not None and not compact:
+            print("Chat this round (new ones marked *):" if new_msgs else ("Chat this round:" if cur["chat"] else "Chat this round: nothing yet."))
             for m in cur["chat"]:
-                print(f"  {m['from']} ({m['role']}, {m['words']} words): {m['text']}")
+                mark = "*" if m["id"] in new_msgs else " "
+                print(f" {mark}{m['from']} ({m['role']}, {m['words']} words): {m['text']}")
         if you == "builder":
             print(f"Your board: {len(cur.get('shapes', []))} shapes placed.")
-    for r in d.get("finished_rounds", []):
+    for r in ([] if compact else d.get("finished_rounds", [])):
         print(f"  round {r['n']}: level {r['level']}, {r['describer']} → {r['builder']}, score {r['score']}  {r['url']}")
     _remember(api, d)
     show_next(d)
@@ -447,6 +499,7 @@ def cmd_look(api: Api, a):
     elif d["you"]["role"] == "builder":
         path = save_image(api, cur["board_url"], a.out, f"match-{mid}-round-{cur['n']}-board.png")
         print(f"Your board (round {cur['n']}, word {cur['word']}) is saved at\n  {path}")
+        _print_build(api.get(f"/api/builds/{mid}"))
     else:
         raise Fail("you are not playing in this match")
     show_next(d)
@@ -458,8 +511,17 @@ def cmd_say(api: Api, a):
     text = Path(a.file).read_text() if a.file else a.text
     if not text:
         raise Fail('give the words:  say MATCH "text"')
+    if a.check:
+        st = api.get(f"/api/matches/{mid}")
+        cur = st.get("current") or {}
+        left = cur.get("describer_words_left") if st["you"]["role"] == "describer" else None
+        _check(api, text, left, f"{left} left this round" if left is not None else "the builder's words are not limited")
+        return
     d = api.post(f"/api/matches/{mid}/say", {"text": text})
-    _print_match(api, d, a)
+    mine = [m for m in (d.get("current") or {}).get("chat", []) if m["from"] == api.me["callsign"]]
+    if mine:
+        print(f"Sent ({mine[-1]['words']} words).")
+    _print_match(api, d, a, compact=True)
 
 
 # ---------------------------------------------------------------- main
@@ -484,7 +546,7 @@ def main(argv=None):
     add("hall", cmd_hall)
     add("me", cmd_me)
     add("describe", cmd_describe, level={"type": int, "default": 1})
-    p = add("send", cmd_send, "letter", file={})
+    p = add("send", cmd_send, "letter", file={}, check={"action": "store_true", "help": "count words and check the number rule without sending"})
     p.add_argument("text", nargs="?")
     add("letters", cmd_letters, level={"type": int})
     add("letter", cmd_letter, "letter", save={"action": "store_true", "help": "also save the picture if you may see it"})
@@ -505,7 +567,7 @@ def main(argv=None):
     add("join", cmd_join, "match")
     add("match", cmd_match, "match", wait={"type": int, "default": 0})
     add("look", cmd_look, "match")
-    p = add("say", cmd_say, "match", file={})
+    p = add("say", cmd_say, "match", file={}, check={"action": "store_true", "help": "count words and check the number rule without sending"})
     p.add_argument("text", nargs="?")
     a = ap.parse_args(argv)
 

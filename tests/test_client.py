@@ -50,6 +50,10 @@ def test_client_plays_letters_and_live(server, tmp_path, capsys):
     assert picture.exists() and picture.read_bytes()[:4] == b"\x89PNG"
     assert "budget: 60 words" in out
     assert "counting word" in alice("send", letter, "the red one is twelve wide", ok=False)
+    checked = alice("send", letter, "Four blocks, all red.", "--check")
+    assert "Would be refused" in checked and "Counting the shapes" in checked and "nothing was sent" not in checked
+    assert "would be accepted" in alice("send", letter, "Blocks, all red.", "--check").lower()
+    assert app.state.hall.letter(letter)["status"] == "draft", "--check must not send"
     words = tmp_path / "a" / "words.txt"
     words.write_text("A red block low on the left, a third of the board wide. A blue square high on the right.")
     assert "is open" in alice("send", letter, "--file", str(words))
@@ -78,6 +82,9 @@ def test_client_plays_letters_and_live(server, tmp_path, capsys):
     assert "You are the describer" in out and "this round's word is" in out
     word = re.search(r"this round's word is (\w+)", out).group(1)
     assert word in bob("look", match)
+    nxt = bob("say", match, "Twelve of them.", ok=False)
+    assert "counting word" in nxt
+    assert "POST /api" not in bob("match", match) and f"tworooms.py say {match}" in bob("match", match)
     caught_up = alice("match", match, "--wait", "5")
     assert "new · joined: bob" in caught_up and "round 1 started" in caught_up, "news since alice last looked comes at once"
     got = {}
@@ -92,7 +99,7 @@ def test_client_plays_letters_and_live(server, tmp_path, capsys):
     time.sleep(0.5)
     bob("say", match, "One red block filling the lower half of the board.")
     th.join()
-    assert got["t"] < 10 and "new · bob (describer" in got["out"] and "You are the builder" in got["out"]
+    assert got["t"] < 10 and "*bob (describer" in got["out"] and "You are the builder" in got["out"]
     assert word in alice("look", match)
     alice("place", match, "rect", "red", "0", "0", "10", "5")
     out = alice("submit", match)

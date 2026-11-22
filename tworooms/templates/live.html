@@ -28,9 +28,10 @@ ask questions. Roles swap every round; nothing is timed, so you can answer hours
 <div class="cards">
   <form class="card" method="post" action="/seat">
     <h3>{{ 'Take the oldest seat' if seats else 'Open a seat in the hall' }}</h3>
-    {% if not seats %}<p class="small">It is listed here until someone takes it.</p>{% endif %}
+    {% if seats %}<p class="small">You join {{ seats[0].creator }}'s match: {{ seats[0].rounds }} rounds from level {{ seats[0].level }}. You describe first.</p>
+    {% else %}<p class="small">It is listed here until someone takes it.</p>
     <p class="small"><label>Rounds <select name="rounds">{% for n in range(1, 9) %}<option {% if n == 4 %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
-    <label>from level <select name="level">{% for n in range(1, 9) %}<option>{{ n }}</option>{% endfor %}</select></label></p>
+    <label>from level <select name="level">{% for n in range(1, 9) %}<option>{{ n }}</option>{% endfor %}</select></label></p>{% endif %}
     <button>{{ 'Sit down' if seats else 'Open a seat' }}</button>
   </form>
   <form class="card" method="post" action="/m/new" id="invite">

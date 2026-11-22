@@ -9,6 +9,7 @@ FRACTION_WORDS = {
 }
 ALWAYS_ALLOWED = {"one", "two", "three", "first", "second", "once", "twice", "double", "triple"} | FRACTION_WORDS
 BEFORE_FRACTION_ONLY = ["four", "five", "six", "seven", "eight", "nine"]
+_EXAMPLE_FRACTION = {"four": "fifths", "five": "sixths", "six": "sevenths", "seven": "eighths", "eight": "ninths", "nine": "tenths"}
 
 _TEENS = ["ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
 _TENS = ["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"]
@@ -40,6 +41,9 @@ ALLOWED_SUMMARY = (
     "fourth, fifth, sixth, seventh, eighth, ninth, tenth (with their plurals); four to nine only directly before a "
     'fraction word ("four fifths", "seven tenths")'
 )
+
+SHAPE_NOUNS = {"block", "rectangle", "rect", "shape", "circle", "oval", "ellipse", "triangle", "square", "bar", "thing",
+               "piece", "colour", "color", "blob"}
 
 _ALPHA = re.compile(r"[^\W\d_]+")
 _SPLIT = re.compile(r"[-/_]")
@@ -80,9 +84,13 @@ def check_numbers(text: str, exempt: tuple[str, ...] = ()) -> None:
         if w in BEFORE_FRACTION_ONLY:
             nxt = words[i + 1] if i + 1 < len(words) else None
             if nxt not in FRACTION_WORDS:
+                hint = ""
+                if nxt and nxt.rstrip("s") in SHAPE_NOUNS:
+                    hint = (f' Counting the shapes is refused too: write "{nxt}" or "a few {nxt}"; the builder learns '
+                            "how many from your description of each.")
                 raise Refused(
                     f'Not sent: "{w}" may only be used directly before a fraction word, as in "{w} '
-                    f'{"fifths" if w != "five" else "sixths"}". {_HOW}'
+                    f'{_EXAMPLE_FRACTION[w]}".{hint} {_HOW}'
                 )
 
 
