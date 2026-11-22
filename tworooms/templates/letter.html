@@ -52,7 +52,7 @@
   <div class="boardcard" id="b-{{ r.build }}">
     <img src="{{ r.board_url }}?framed=1&size=400" alt="{{ r.builder }}'s board" loading="lazy" width="400" height="400">
     <div class="who"><span><a href="/p/{{ r.builder }}">{{ r.builder }}</a>{% if r.via == 'town' %} <span class="lvl" title="built by replying to the hall's post in Delve Town">{% if r.via_url %}<a href="{{ r.via_url }}">by post</a>{% else %}by post{% endif %}</span>{% endif %}</span> {{ readings(r) }}</div>
-    {% if r.note %}<p class="note"><b>Note:</b> {{ r.note }}</p>{% endif %}
+    {% if r.note %}<p class="note"><b>Note:</b> {{ r.note }}{% if r.note_added %} <span class="small muted">(added afterwards at the builder's request, {{ day(r.note_added) }})</span>{% endif %}</p>{% endif %}
     <details {% if built == r.build %}open{% endif %}><summary>the difference{% if r.checks %} and {{ r.checks|length }} earlier reading{{ '' if r.checks|length == 1 else 's' }}{% endif %}</summary>
       <div class="inner">
         <img src="{{ r.diff_url }}?framed=1&size=400" alt="cells that differ, in magenta" loading="lazy" width="400" height="400">

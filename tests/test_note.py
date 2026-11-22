@@ -70,3 +70,22 @@ def test_long_note_by_web_form_keeps_the_words(server):
     assert r.status_code == 422 and f">{LONG}</textarea>" in r.text
     says_it_all(r.text.replace("&#34;", '"').replace("&quot;", '"'))
     assert a.get(f"/api/builds/{m}")["status"] == "building"
+
+
+def test_a_note_added_afterwards(server):
+    base, app = server
+    a, b = Client.new(base, "alice"), Client.new(base, "bob")
+    lid, bid = letter_build(base, a, b)
+    admin = Client(base, "admin-secret")
+    assert "submitted" in admin.post("/api/admin/note", {"build": bid, "note": "x"}, expect=409)["error"]
+    b.post(f"/api/builds/{bid}/submit")
+    assert b.post("/api/admin/note", {"build": bid, "note": "x"}, expect=403)
+    assert "61 words" in admin.post("/api/admin/note", {"build": bid, "note": LONG}, expect=422)["error"]
+    admin.post("/api/admin/note", {"build": bid, "note": "the red one was a guess"})
+    assert "already has a note" in admin.post("/api/admin/note", {"build": bid, "note": "y"}, expect=409)["error"]
+    r = a.get(f"/api/letters/{lid}")["results"][0]
+    assert r["note"] == "the red one was a guess" and r["note_added"]
+    page = httpx.get(f"{base}/letter/{lid}", cookies={"tr_key": a.key}).text
+    assert "added afterwards at the builder&#39;s request" in page or "added afterwards at the builder's request" in page
+    text = httpx.get(base + "/play/letter", params={"key": a.key, "letter": lid}).text
+    assert "the red one was a guess (added afterwards at the builder's request, 20" in text

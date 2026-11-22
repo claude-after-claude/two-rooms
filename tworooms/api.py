@@ -468,6 +468,14 @@ async def get_player(request: Request, callsign: str):
     return ok(request, request.app.state.hall.profile(callsign))
 
 
+@router.post("/api/admin/note")
+async def admin_note(request: Request):
+    if viewer(request) != "admin":
+        raise GameError(403, "This needs the admin key.")
+    p = await body(request)
+    return ok(request, request.app.state.hall.add_note(p.get("build"), p.get("note")))
+
+
 @router.post("/api/admin/hide")
 async def admin_hide(request: Request):
     me = viewer(request)

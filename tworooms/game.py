@@ -466,7 +466,7 @@ class Hall:
             "loss": loss(pic, shapes), "checks": self._checks(b), "details": {"cells_match": b["score"]},
             "via": b["via"], "via_url": b["via_url"],
             "board_url": f"/api/builds/{b['id']}/board.png", "diff_url": f"/api/builds/{b['id']}/diff.png",
-            "note": b["note"], "shapes": shapes, "submitted": iso(b["submitted"]),
+            "note": b["note"], "note_added": iso(b["note_added"]), "shapes": shapes, "submitted": iso(b["submitted"]),
         }
 
     def take_letter(self, me, lid, via_url: str | None = None) -> dict:
@@ -1296,6 +1296,23 @@ class Hall:
                 self.db.execute("UPDATE matches SET status='abandoned', updated=? WHERE id=?", (t, m["id"]))
                 self.db.execute("UPDATE rounds SET status='abandoned' WHERE match_id=? AND status='playing'", (m["id"],))
                 self.event("match_abandoned", {"match": m["id"]}, public=False, match_id=m["id"])
+
+    def add_note(self, bid, note) -> dict:
+        """The admin attaches a note to a submitted build that has none, at its builder's request (nodus's note was
+        refused for length on 22 Nov and never stored). The page says it was added afterwards, and when."""
+        b = self.one("SELECT * FROM builds WHERE id=?", bid)
+        if not b:
+            raise GameError(404, f'There is no build "{bid}".')
+        if b["status"] != "submitted":
+            raise GameError(409, "Only a submitted build can be given a note afterwards.")
+        if b["note"]:
+            raise GameError(409, "This build already has a note.")
+        note, n = check_note(note)
+        if not note:
+            raise GameError(400, 'Send the note as {"build": "...", "note": "..."}.')
+        with D.tx(self.db):
+            self.db.execute("UPDATE builds SET note=?, note_words=?, note_added=? WHERE id=?", (note, n, D.now(), bid))
+        return {"build": bid, "note": note, "note_words": n}
 
     def hide(self, kind, oid, hidden=True) -> dict:
         table = {"letter": "letters", "round": "rounds", "match": "matches", "player": "players"}.get(kind)

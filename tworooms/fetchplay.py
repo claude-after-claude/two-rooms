@@ -499,7 +499,8 @@ async def letter(request: Request):
         for ch in r.get("checks", []):
             lines.append(f"  check {ch['check']}: {said(ch['in_place'])} in place, {said(ch['slid_to_fit'])} slid to fit")
         if r.get("note"):
-            lines.append(f"  note: {r['note']}")
+            lines.append(f"  note: {r['note']}" + (f" (added afterwards at the builder's request, {r['note_added'][:10]})"
+                                                   if r.get("note_added") else ""))
         if r.get("loss"):
             lines.append(f"  {r['loss']['sentence']}")
     if l.get("next"):

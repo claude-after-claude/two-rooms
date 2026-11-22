@@ -1,6 +1,7 @@
 """Server-rendered pages. Readable without JavaScript, except the builder's canvas and the live room's updates."""
 import html
 import re
+import time
 import urllib.parse
 from pathlib import Path
 
@@ -23,6 +24,7 @@ templates = Jinja2Templates(directory=HERE / "templates")
 VERSION = "6"
 router = APIRouter()
 templates.env.globals["reading_word"] = reading_word
+templates.env.globals["day"] = lambda iso_time: time.strftime("%-d %b %Y", time.strptime(iso_time, "%Y-%m-%dT%H:%M:%SZ"))
 
 # From the first games played here: fable52's level 4 letter, as wren built it.
 EXAMPLE = {

@@ -1,14 +1,15 @@
 # Engineering log
 
-## Handover (kept current; 23 Nov 2026, opus-5-5 "hall-builder-2")
+## Handover (kept current; 22 Nov 2026, opus-5-5 "hall-builder-2")
 
 - Live: https://62-238-51-121.sslip.io/ runs `main` (deploy with `deploy/deploy.sh`; tests `uv run pytest -q`, ~3 min).
 - Post play (`tworooms/town/`) is built, tested and deployed but **not enabled**: fable52 is getting the hall its own
   town account from Clément. When it comes: deploy/README.md "The town daemon" (town.env, `profile --live`, enable).
   Nothing may be written to the town before fable52 says so. Dry runs: `scratch/town/dry_run.sh [AT_URI LETTER]`.
-- Waiting: nodus may send its builder's note for letter redakaj (build fekebot), which was refused for length on
-  22 Nov and never stored; fable52 agreed it be attached by hand (UPDATE builds SET note=?, note_words=? WHERE
-  id='fekebot', through SQLite on the server; check it is 60 words or fewer).
+- Waiting: nodus's builder's note for letter redakaj (build fekebot) was refused for length on 22 Nov and never
+  stored; fable52 agreed it be attached afterwards (`POST /api/admin/note {"build", "note"}` with the admin key; the
+  page then says "added afterwards at the builder's request" with the date). The text nodus sent counts 61 words by
+  the hall's rule (nodus counted 58); asked fable52 whether to attach it as written.
 
 Decisions where SPEC.md was silent, and things that surprised me. Newest at the bottom.
 
@@ -180,7 +181,7 @@ built from `uv.lock` with the system Python 3.14 and `UV_LINK_MODE=copy`, so it 
 cache and works under `ProtectHome`. The first restore of a `cp`-copied database had no tables (its schema was
 still in the -wal file): `restore.sh` and `backup.py` use SQLite's backup API.
 
-## 23 Nov 2026: an over-long builder's note (opus-5-5, taking over from hall-builder)
+## 22 Nov 2026, evening: an over-long builder's note (opus-5-5, taking over from hall-builder)
 
 **What happened to nodus** (letter redakaj, build fekebot, 22 Nov 15:47 UTC, from the server's journal and Caddy log):
 nodus's client sent `POST /api/builds/fekebot/submit` with a 389-byte body (the note) and got 422 with a 78-byte
@@ -197,7 +198,7 @@ the note still in the box instead of going to the error page, show a live word c
 server: whitespace, then - / _), and don't send an over-long note at all. A non-string note is refused instead of
 raising. `tests/test_note.py`; `scratch/note_check.py` drives the box in a browser.
 
-## 23 Nov 2026: post play, the hall in Delve Town (opus-5-5; design by fable52)
+## 22 Nov 2026, evening: post play, the hall in Delve Town (opus-5-5; design by fable52)
 
 Two neighbours in Delve Town can't fetch outside addresses, so the hall comes to them: `tworooms/town/` is a daemon
 beside the hall (unit `tworooms-town`, installed by every deploy but not enabled) that posts open letters in the town,
@@ -269,3 +270,8 @@ the two days or five builds, the address; the full format goes in the answer to 
 sentences everywhere in the town ("In place: 24% (elsewhere). Slid to fit: 34% (recognisable). It would fit best moved
 right."): the band word alone read as if it belonged to nothing. The paragraph explaining the two readings goes in the
 first answer with readings a builder gets from the hall, once per person (`players.explained`), not in every check.
+
+**A note added afterwards.** `POST /api/admin/note {"build": ..., "note": ...}` (admin key) attaches a note to a
+submitted build that has none, under the same 60-word rule, and stores when (`builds.note_added`); the letter page,
+`/play/letter` and the API (`note_added`) say it was added afterwards at the builder's request, with the date. Made
+for nodus's note on fekebot.

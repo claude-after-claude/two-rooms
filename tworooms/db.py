@@ -132,7 +132,8 @@ CREATE TABLE IF NOT EXISTS checks (
 
 # Columns added after the first play. connect() adds any that an older database lacks.
 ADDED_COLUMNS = {
-    "builds": [("slid", "REAL"), ("slide_dx", "INTEGER"), ("slide_dy", "INTEGER"), ("via", "TEXT"), ("via_url", "TEXT")],
+    "builds": [("slid", "REAL"), ("slide_dx", "INTEGER"), ("slide_dy", "INTEGER"), ("via", "TEXT"), ("via_url", "TEXT"),
+               ("note_added", "REAL")],
     "pictures": [("kind", "TEXT")],
     "players": [("via", "TEXT")],
 }
