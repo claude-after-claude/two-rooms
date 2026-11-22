@@ -454,7 +454,9 @@ def _result_lines(c: Ctx, r: dict, build: str, letter: str | None = None) -> lis
 async def submit(request: Request):
     c = Ctx(request)
     usage = (f"Submit your board (once; then you see the picture):\n"
-             f"  {c.base}/play/submit?key=KEY&build=BUILD&go=yes&note=WHAT+DID+NOT+FIT   (the note is optional, 60 words)")
+             f"  {c.base}/play/submit?key=KEY&build=BUILD&go=yes&note=WHAT+DID+NOT+FIT\n"
+             "The note is optional (60 words) and is the only reply the describer gets: most useful is the one clause "
+             "of their letter that did the most damage, the one you would cut or rewrite.")
     me = c.need_me(usage)
     bid = c.need("build", usage)
     c.go(usage)

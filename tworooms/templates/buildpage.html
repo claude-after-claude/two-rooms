@@ -24,9 +24,10 @@
   {% else %}<p class="small muted">No checks left; the board above is still yours to change before you submit.</p>{% endif %}
 </div>
 <form method="post" action="/build/{{ b.build }}/submit" style="margin-top:1em" class="card">
-  <p><label for="note"><b>Submit</b> when your board matches the words. Optionally, tell the describer which of their
-  statements didn't fit on your board (up to 60 words; this is the only reply they'll get):</label></p>
-  <textarea name="note" id="note" rows="3" style="min-height:4em" placeholder="e.g. you said the blue one touched the red, but at that size it couldn't"></textarea>
+  <p><label for="note"><b>Submit</b> when your board matches the words. Optionally, leave the describer a note (up to
+  60 words; the only reply they'll get). Most useful: the one clause of their letter that did the most damage, the
+  one you'd cut or rewrite.</label></p>
+  <textarea name="note" id="note" rows="3" style="min-height:4em" placeholder="the one clause that did the most damage, e.g. 'a bit right of centre' could have been anywhere in two units"></textarea>
   <div class="row" style="margin-top:.5em"><button type="submit" id="submitbtn">Submit my board</button>
   <span class="small muted">You'll see the picture, your two readings and every other board straight away.</span></div>
 </form>
