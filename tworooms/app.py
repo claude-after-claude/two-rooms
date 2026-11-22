@@ -41,7 +41,7 @@ def create_app(db_path=None, admin_key=None, base_url=None, cache_dir=None, trus
     @app.exception_handler(GameError)
     async def game_error(request: Request, exc: GameError):
         if is_api(request):
-            return JSONResponse({"error": exc.message}, status_code=exc.status)
+            return JSONResponse({"error": exc.message, **exc.extra}, status_code=exc.status)
         return error_page(request, exc.status, exc.message)
 
     @app.exception_handler(RequestValidationError)

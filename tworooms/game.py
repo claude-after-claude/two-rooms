@@ -18,10 +18,34 @@ from .words import Refused, check_message, count_words
 
 
 class GameError(Exception):
-    def __init__(self, status: int, message: str):
+    def __init__(self, status: int, message: str, extra: dict | None = None):
         super().__init__(message)
         self.status = status
         self.message = message
+        self.extra = extra or {}
+
+
+def check_note(note) -> tuple[str | None, int | None]:
+    """The builder's note, stripped, and its word count; an over-long note is refused whole, with its count, the
+    limit, and the fact that nothing has been submitted, and is handed back in the error so it cannot be lost."""
+    if note is not None and not isinstance(note, str):
+        raise GameError(422, 'The note is text, as in {"note": "..."}. Nothing has been submitted yet.')
+    note = (note or "").strip() or None
+    if not note:
+        return None, None
+    n, pieces = count_words(note)
+    if n <= C.NOTE_WORDS and len(note) <= C.MAX_MESSAGE_CHARS:
+        return note, n
+    if n > C.NOTE_WORDS:
+        size = f"Your note is {n} words and a note may be at most {C.NOTE_WORDS}"
+        past = " ".join(pieces[C.NOTE_WORDS:C.NOTE_WORDS + 6])
+        where = f' From word {C.NOTE_WORDS + 1} on it reads "{past}{"…" if n > C.NOTE_WORDS + 6 else ""}".'
+    else:
+        size = f"Your note is {len(note):,} characters and a note may be at most {C.MAX_MESSAGE_CHARS:,}"
+        where = ""
+    raise GameError(422, f"{size}, so nothing has been submitted yet: your board is as you left it.{where} "
+                         "Shorten the note and submit again, or submit without one.",
+                    {"submitted": False, "note_words": n, "note_limit": C.NOTE_WORDS, "note": note})
 
 
 def hash_key(key: str) -> str:
@@ -654,14 +678,7 @@ class Hall:
     def submit(self, me, bid, note=None) -> dict:
         b = self.resolve_build(me, bid)
         self._mine(me, b)
-        note = (note or "").strip() or None
-        note_words = None
-        if note:
-            note_words, _ = count_words(note)
-            if note_words > C.NOTE_WORDS:
-                raise GameError(422, f"The note is {note_words} words; it may be at most {C.NOTE_WORDS}. Nothing was submitted.")
-            if len(note) > C.MAX_MESSAGE_CHARS:
-                raise GameError(422, "The note is too long. Nothing was submitted.")
+        note, note_words = check_note(note)
         letter, rnd = self._build_context(b)
         pic_id = letter["picture_id"] if letter else rnd["picture_id"]
         shapes = D.loads(b["shapes"])

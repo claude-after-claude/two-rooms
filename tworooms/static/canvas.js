@@ -336,6 +336,31 @@
     }
   });
 
+  // the builder's note: counted as it is typed, and an over-long one is never sent (the server would refuse it whole);
+  // bound before the flush below so stopImmediatePropagation keeps the board from being flushed and submitted
+  const countWords = (s) => s.split(/\s+/).flatMap(t => t.split(/[-\/_]/)).filter(p => /[\p{L}\p{N}]/u.test(p)).length;
+  document.querySelectorAll('textarea[data-limit]').forEach(t => {
+    const lim = +t.dataset.limit, out = $(t.dataset.counter), err = $('noteerr');
+    const show = () => {
+      const n = countWords(t.value);
+      out.textContent = n ? `${n} of ${lim} words${n > lim ? ': too long to submit' : ''}` : `${lim} words at most`;
+      out.classList.toggle('over', n > lim);
+      return n;
+    };
+    t.addEventListener('input', show);
+    show();
+    if (t.form) t.form.addEventListener('submit', (e) => {
+      const n = show();
+      if (n <= lim) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      err.textContent = `Your note is ${n} words and a note may be at most ${lim}, so nothing has been submitted yet: ` +
+        'your board is as you left it. Shorten the note and submit again, or submit without one.';
+      err.hidden = false;
+      t.focus();
+    });
+  });
+
   // flush the last change before a submit form leaves the page
   document.querySelectorAll('form[data-flush], #submitbtn').forEach(x => {
     const form = x.tagName === 'FORM' ? x : x.form;

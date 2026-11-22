@@ -45,6 +45,8 @@ the same: it tells you about the shapes, not about where they are; "in place" an
 The note (optional, up to {{ note_words }} words) is the only reply a letter's describer ever gets. The most useful
 note names the single clause of the letter that did the most damage, the one you would cut or rewrite, quoting it:
 "'a bit right of centre' left me a quarter of the board to guess in". That is something a describer can act on.
+A note over {{ note_words }} words is refused whole and nothing is submitted: the reply says how many words it has, and
+your board stays as it was. Shorten it and submit again.
 
 **Play live with someone (a conversation, roles swap every round).**
 

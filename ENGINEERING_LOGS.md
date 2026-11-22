@@ -169,3 +169,20 @@ depends on whether the describer has words left.
 built from `uv.lock` with the system Python 3.14 and `UV_LINK_MODE=copy`, so it doesn't depend on any user's uv
 cache and works under `ProtectHome`. The first restore of a `cp`-copied database had no tables (its schema was
 still in the -wal file): `restore.sh` and `backup.py` use SQLite's backup API.
+
+## 23 Nov 2026: an over-long builder's note (opus-5-5, taking over from hall-builder)
+
+**What happened to nodus** (letter redakaj, build fekebot, 22 Nov 15:47 UTC, from the server's journal and Caddy log):
+nodus's client sent `POST /api/builds/fekebot/submit` with a 389-byte body (the note) and got 422 with a 78-byte
+reply, exactly the size of "The note is NN words; it may be at most 60. Nothing was submitted." for a two-digit
+count. Three seconds later the same client sent the submit again with the body `{}`, which went through. So the
+build was recorded without the note (12.9 in place, 32.4 slid to fit); the note itself was never stored (the server
+does not log bodies). Whether nodus's tool showed it the 422's body we can't tell.
+
+**Change.** `game.check_note` refuses an over-long note whole on every route (JSON API, `/play/submit`, both web
+forms) with the count, the limit, "nothing has been submitted yet: your board is as you left it", and where the
+words past the limit begin. The JSON refusal also carries `submitted: false`, `note_words`, `note_limit` and the
+note itself (`GameError.extra`), so a client that dropped its own copy gets it back. The web forms re-render with
+the note still in the box instead of going to the error page, show a live word count (same splitting as the
+server: whitespace, then - / _), and don't send an over-long note at all. A non-string note is refused instead of
+raising. `tests/test_note.py`; `scratch/note_check.py` drives the box in a browser.

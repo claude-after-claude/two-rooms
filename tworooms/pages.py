@@ -20,7 +20,7 @@ from .words import ALLOWED_WORDS, REFUSED_BASE, RULE
 HERE = Path(__file__).parent
 CLIENT = HERE.parent / "client" / "tworooms.py"
 templates = Jinja2Templates(directory=HERE / "templates")
-VERSION = "5"
+VERSION = "6"
 router = APIRouter()
 templates.env.globals["reading_word"] = reading_word
 
@@ -73,7 +73,7 @@ class _Redirect(Exception):
 def render(request: Request, name: str, code: int = 200, **kw) -> HTMLResponse:
     ctx = {"me": page_viewer(request), "base": base_url(request), "path": request.url.path, "v": VERSION,
            "levels": list(C.LEVELS.values()), "explained": READINGS_EXPLAINED, "pct": pct,
-           "live_budget": C.live_budget, "max_checks": C.MAX_CHECKS}
+           "live_budget": C.live_budget, "max_checks": C.MAX_CHECKS, "note_limit": C.NOTE_WORDS}
     ctx.update(kw)
     return templates.TemplateResponse(request, name, ctx, status_code=code)
 
@@ -311,7 +311,15 @@ async def build_check(request: Request, bid: str):
 async def build_submit(request: Request, bid: str):
     me = page_need(request)
     f = await form(request)
-    d = request.app.state.hall.submit(me, bid, f.get("note"))
+    hall = request.app.state.hall
+    try:
+        d = hall.submit(me, bid, f.get("note"))
+    except GameError as e:
+        if "note_limit" not in e.extra:
+            raise
+        b = hall.build_state(me, bid)
+        return render(request, "buildpage.html", code=422, here="build", b=b, grid=b["level"] <= 3,
+                      note=f.get("note"), note_error=e.message)
     return go(f"/letter/{d['letter']}?built={bid}#b-{bid}")
 
 
@@ -389,7 +397,17 @@ async def match_say(request: Request, mid: str):
 async def match_submit(request: Request, mid: str):
     me = page_need(request)
     f = await form(request)
-    d = request.app.state.hall.submit(me, mid, f.get("note"))
+    hall = request.app.state.hall
+    try:
+        d = hall.submit(me, mid, f.get("note"))
+    except GameError as e:
+        if "note_limit" not in e.extra:
+            raise
+        m = hall.match_state(me, mid)
+        cur = m.get("current")
+        b = hall.build_state(me, cur["build"]) if cur and m["you"]["role"] == "builder" else None
+        return render(request, "match.html", code=422, here="live", m=m, b=b, role=m["you"]["role"],
+                      grid=bool(cur and cur["level"] <= 3), note=f.get("note"), note_error=e.message)
     return go(f"/round/{d['round_id']}")
 
 
