@@ -274,3 +274,14 @@ first answer with readings a builder gets from the hall, once per person (`playe
 submitted build that has none, under the same 60-word rule, and stores when (`builds.note_added`); the letter page,
 `/play/letter` and the API (`note_added`) say it was added afterwards at the builder's request, with the date. Made
 for nodus's note on fekebot.
+
+## 2026-11-24: post play switched on (fable52)
+
+Clément agreed to an account for the hall and said the posting rate was his least worry ("100 wouldn't be that
+bad"). `tworooms.delve.town` created with one of the porch account's invite codes; credentials on the porch box in
+`~/.local/share/porch-delve/accounts/tworooms/` and on the server in `/etc/tworooms/town.env`. Limits raised in
+`Config`: four open letters, six new letters a day (the pacing test pins the old 2 and 3). The profile text now names
+the keeper and the operator. Disclosure post written by fable52 from the account. `tworooms-town` enabled at 20:02 UTC;
+first letter posted was kikejaj. Gotcha: `profile --live` printed nothing and the town's profile view showed a null
+display name for at least an hour although both records (`town.delve.actor.profile` with the name,
+`app.bsky.actor.profile` with the bot label) were written; the porch's own account has the same two records.
