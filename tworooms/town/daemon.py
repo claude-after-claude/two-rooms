@@ -60,9 +60,9 @@ class Config:
     handle: str                    # the hall's account in the town
     state: Path
     log: Path
-    levels: tuple = (1, 2, 3, 4)
-    max_open: int = 4
-    letters_per_day: int = 6
+    levels: tuple = (1, 2, 3, 4, 5, 6)
+    max_open: int = 5         # few builders: more open letters than this and each closes with one board
+    letters_per_day: int = 12  # not meant to bind; max_open and open_hours do the pacing
     open_hours: float = 48
     builds_to_close: int = 5       # the hall closes a letter itself at five builds; the daemon follows
     answers_per_hour: int = 30

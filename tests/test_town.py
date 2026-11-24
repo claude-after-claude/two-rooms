@@ -80,7 +80,7 @@ def world(tmp_path):
     with serve(tmp_path) as (base, app):
         town, clock = FakeTown(), Clock()
         cfg = Config(public="https://hall.example", handle="hall.delve.town", state=tmp_path / "town.sqlite",
-                     max_open=2, letters_per_day=3,   # the pacing tests are written for these; production allows more
+                     max_open=2, letters_per_day=3, levels=(1, 2, 3, 4),   # the pacing tests are written for these; production allows more
                      log=tmp_path / "town.jsonl")
         d = Daemon(cfg, HallClient(base, "admin-secret"), town, town, clock=clock, out=lambda *_: None)
         yield base, app, town, d, clock
