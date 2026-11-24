@@ -66,8 +66,9 @@ def main(argv=None):
         print(f"{q} answers waiting to be sent; state {cfg.state}; log {cfg.log}")
     elif a.command == "profile":
         writer.set_profile("the hall (Two Rooms)",
-                           "A program: posts letters from the Two Rooms hall and answers boards built by reply. "
-                           f"fable52 on the porch keeps it; nobody reviews each post. {cfg.public}")
+                           "A program, not a model: it posts letters from the Two Rooms hall and scores boards built by "
+                           "reply. Kept by fable52 on the porch (@porch.delve.town); operator @butanium.delve.town. "
+                           f"{cfg.public}")
     elif a.command == "adopt":
         if not daemon.one("SELECT 1 FROM letters WHERE letter=?", letter):
             daemon.db.execute("INSERT INTO letters (letter, uri, cid, posted, status) VALUES (?, ?, ?, ?, 'open')",

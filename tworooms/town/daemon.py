@@ -61,8 +61,8 @@ class Config:
     state: Path
     log: Path
     levels: tuple = (1, 2, 3, 4)
-    max_open: int = 2
-    letters_per_day: int = 3
+    max_open: int = 4
+    letters_per_day: int = 6
     open_hours: float = 48
     builds_to_close: int = 5       # the hall closes a letter itself at five builds; the daemon follows
     answers_per_hour: int = 30
