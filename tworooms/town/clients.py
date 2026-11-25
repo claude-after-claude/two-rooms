@@ -38,6 +38,18 @@ def link_facets(text: str) -> list[dict]:
     return out
 
 
+def mention_facets(text: str, mentions: dict[str, str]) -> list[dict]:
+    """A mention only notifies its account when the "@handle" carries a facet with the account's DID."""
+    out = []
+    for handle, did in mentions.items():
+        at = text.find("@" + handle)
+        if at >= 0:
+            start = len(text[:at].encode())
+            out.append({"index": {"byteStart": start, "byteEnd": start + len(("@" + handle).encode())},
+                        "features": [{"$type": "town.delve.richtext.facet#mention", "did": did}]})
+    return out
+
+
 class TownReader:
     """Public reads; no account needed."""
 
@@ -118,11 +130,13 @@ class TownWriter:
     def did(self) -> str:
         return self.session()["did"]
 
-    def post(self, text: str, reply: dict | None = None, image: bytes | None = None, alt: str | None = None) -> dict:
-        """`reply` is {"root": {uri, cid}, "parent": {uri, cid}}."""
+    def post(self, text: str, reply: dict | None = None, image: bytes | None = None, alt: str | None = None,
+             mentions: dict[str, str] | None = None) -> dict:
+        """`reply` is {"root": {uri, cid}, "parent": {uri, cid}}; `mentions` maps a handle written as "@handle" in the
+        text to its DID."""
         s = self.session()
         rec = {"$type": POST, "text": text, "createdAt": now_iso()}
-        facets = link_facets(text)
+        facets = mention_facets(text, mentions or {}) + link_facets(text)
         if facets:
             rec["facets"] = facets
         if image is not None:
@@ -134,6 +148,12 @@ class TownWriter:
         out = self._call("com.atproto.repo.createRecord", {"repo": s["did"], "collection": POST, "record": rec},
                          token=s["accessJwt"])
         return {"uri": out["uri"], "cid": out["cid"]}
+
+    def notifications(self, limit: int = 50) -> list[dict]:
+        """Newest first: mentions of the hall and replies to it, among likes and follows."""
+        s = self.session()
+        return self._call("town.delve.notification.listNotifications", token=s["accessJwt"],
+                          params={"limit": limit}).get("notifications", [])
 
     def set_profile(self, display: str, description: str):
         """The bot label the town asks agents to carry, and the profile shown in the app; other fields kept."""
@@ -164,10 +184,12 @@ class DryWriter:
         self.handle, self.out, self.n, self.images = handle, out, 0, images
         self.did = did or "did:dry-run:" + handle
 
-    def post(self, text, reply=None, image=None, alt=None) -> dict:
+    def post(self, text, reply=None, image=None, alt=None, mentions=None) -> dict:
         self.n += 1
         uri = f"at://{self.did}/{POST}/dry{self.n}"
         where = f"reply under {reply['parent']['uri']}" if reply else "new post"
+        if mentions:
+            where += ", mentioning " + ", ".join(f"{h} ({d})" for h, d in mentions.items())
         img = ""
         if image:
             saved = ""
@@ -215,6 +237,9 @@ class HallClient:
     def register(self, callsign, about=None) -> str:
         return self._req("POST", "/api/players", self.admin_key,
                          {"callsign": callsign, "about": about, "via": "town"})["key"]
+
+    def player(self, callsign: str) -> dict:
+        return self._req("GET", f"/api/players/{callsign}")
 
     def open_letters(self, level: int) -> list[dict]:
         return self._req("GET", f"/api/letters?level={level}")["letters"]

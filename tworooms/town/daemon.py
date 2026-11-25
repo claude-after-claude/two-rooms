@@ -7,6 +7,7 @@ hasn't posted since, and signs every post. Every reply it reads and every post i
 its state database.
 """
 import json
+import re
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -49,6 +50,9 @@ CREATE TABLE IF NOT EXISTS seen (uri TEXT PRIMARY KEY, letter TEXT, did TEXT, ha
     outcome TEXT, read REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS outbox (id INTEGER PRIMARY KEY, letter TEXT, to_did TEXT, root_uri TEXT, root_cid TEXT,
     parent_uri TEXT, parent_cid TEXT, text TEXT NOT NULL, queued REAL NOT NULL, sent_uri TEXT, dropped TEXT);
+CREATE TABLE IF NOT EXISTS tell (did TEXT PRIMARY KEY, handle TEXT NOT NULL, added REAL NOT NULL, how TEXT);
+CREATE TABLE IF NOT EXISTS told (letter TEXT NOT NULL, did TEXT NOT NULL, uri TEXT, at REAL NOT NULL,
+    PRIMARY KEY (letter, did));
 CREATE TABLE IF NOT EXISTS posts (uri TEXT PRIMARY KEY, cid TEXT, kind TEXT NOT NULL, letter TEXT, to_did TEXT,
     parent TEXT, text TEXT NOT NULL, alt TEXT, at REAL NOT NULL, dry INTEGER NOT NULL);
 """
@@ -65,6 +69,7 @@ class Config:
     letters_per_day: int = 12  # not meant to bind; max_open and open_hours do the pacing
     open_hours: float = 48
     builds_to_close: int = 5       # the hall closes a letter itself at five builds; the daemon follows
+    min_room: int = 2              # a letter goes to the town only with room for this many more builders
     answers_per_hour: int = 30
     max_post_chars: int = 3000     # the town allows far more; longer than this is unreadable in a feed
 
@@ -130,6 +135,14 @@ class Daemon:
             self.maybe_post_letter()
         except (TownError, HallError) as e:
             self.log("error", where="post a letter", error=str(e))
+        try:
+            self.read_notifications()
+        except TownError as e:
+            self.log("error", where="read notifications", error=str(e))
+        try:
+            self.tell_the_list()
+        except (TownError, HallError) as e:
+            self.log("error", where="tell the list", error=str(e))
         self.flush()
 
     def run(self, every: float = 120):
@@ -187,7 +200,7 @@ class Daemon:
                     lines.append(EXPLAIN)    # the first readings a builder gets from the hall say what they mean
                     self.db.execute("UPDATE players SET explained=1 WHERE did=?", (did,))
                 if lines:         # one answer per person per tick, under their latest post: never two in a row
-                    self.queue(L, last, "\n\n".join(lines))
+                    self.queue(L["letter"], {"uri": L["uri"], "cid": L["cid"]}, last, "\n\n".join(lines))
 
     def mentions_me(self, p) -> bool:
         rec = p["record"]
@@ -207,6 +220,10 @@ class Daemon:
         r = parse_reply(rec.get("text", ""))
         if r.shapes and not r.errors:
             return self.build(L, p, r)
+        if not r.shapes:
+            asked = self.tell_asked(p, "under a letter")
+            if asked:
+                return asked
         if r.errors:
             return (f"I couldn't read that as a board: {'; '.join(r.errors)}. Nothing was placed or checked; reply with "
                     f"the whole board again, one shape per line: {FORMAT} ({BOARD})."), "unreadable"
@@ -277,10 +294,10 @@ class Daemon:
 
     # ------------------------------------------------------------------ the outbox
 
-    def queue(self, L, parent, text: str):
+    def queue(self, letter: str | None, root: dict, parent, text: str):
         self.db.execute("INSERT INTO outbox (letter, to_did, root_uri, root_cid, parent_uri, parent_cid, text, queued) "
                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                        (L["letter"], parent["author"]["did"], L["uri"], L["cid"], parent["uri"], parent["cid"],
+                        (letter, parent["author"]["did"], root["uri"], root["cid"], parent["uri"], parent["cid"],
                          f"{text}\n\n{SIGN}", self.clock()))
 
     def flush(self):
@@ -289,7 +306,7 @@ class Daemon:
             if hour >= self.cfg.answers_per_hour:
                 self.log("held", why=f"{hour} answers in the last hour", waiting=o["id"])
                 return
-            ours = self.one("SELECT MAX(at) AS t FROM posts WHERE to_did=?", o["to_did"])["t"]
+            ours = self.one("SELECT MAX(at) AS t FROM posts WHERE to_did=? AND kind!='tell'", o["to_did"])["t"]
             theirs = self.one("SELECT MAX(read) AS t FROM seen WHERE did=?", o["to_did"])["t"]
             if ours is not None and (theirs is None or ours > theirs):
                 self.db.execute("UPDATE outbox SET dropped=? WHERE id=?", ("would be twice in a row", o["id"]))
@@ -308,25 +325,32 @@ class Daemon:
     # ------------------------------------------------------------------ posting a letter
 
     def choose(self) -> dict | None:
-        """An open hall letter with room for at least three builders and at least two days left: the fewest builders
+        """An open hall letter with room for `min_room` more builders and at least two days left: the fewest builders
         first, then the one waiting longest."""
         posted = {r["letter"] for r in self.all("SELECT letter FROM letters")}
         latest_sent = self.clock() - (7 * 24 - self.cfg.open_hours - 6) * 3600
         cands = [c for lv in self.cfg.levels for c in self.hall.open_letters(lv)]
-        cands = [c for c in cands if c["letter"] not in posted and c["builds"] + c["building"] <= 2
+        cands = [c for c in cands if c["letter"] not in posted
+                 and c["builds"] + c["building"] <= self.cfg.builds_to_close - self.cfg.min_room
                  and ts(c["sent"]) > latest_sent]
         cands.sort(key=lambda c: (c["builds"] + c["building"], ts(c["sent"])))
         return cands[0] if cands else None
 
+    @staticmethod
+    def how_to(level: int) -> str:
+        """What a first-time builder needs, with one example of each kind of shape the level uses."""
+        ticks = " (a tick is one unit)" if level <= 2 else ""   # levels 1 and 2 have ticks, and letters count them
+        more = ("; ellipse blue 5 5 2 1 is centre, half-width, half-height" if level >= 4 else "") + \
+               ("; triangle green 1 1 4 1 1 5 is three corners" if level >= 5 else "")
+        return (f"Reply with your board on a 10 by 10 grid from the bottom left{ticks}, one shape per line: rect red 2 1 "
+                f"3 2 is x, y, width, height{more}. Your first two replies are checks; the third, or one saying final, "
+                "is your build.")
+
     def letter_text(self, c: dict) -> list[str]:
         head = (f"A letter to build, by reply. Level {c['level']}, {c['level_name']}: {c['describer']} saw a picture "
                 f"in the hall and wrote this, in {plural(c['words'], 'word')}.")
-        ticks = " (a tick is one unit)" if c["level"] <= 2 else ""   # levels 1 and 2 have ticks, and letters count them
-        oval = ", ellipse blue 5 5 2 1 is centre, half-width, half-height" if c["level"] >= 4 else ""
-        tail = (f"Reply with your board on a 10 by 10 grid from the bottom left{ticks}, one shape per line: rect red 2 1 "
-                f"3 2 is x, y, width, height{oval}. Your first two replies are checks; the third, or one saying final, "
-                "is your build. Open for two days or until five have built.\n"
-                f"{self.cfg.public}/letter/{c['letter']}\n\n{SIGN}")
+        tail = f"{self.how_to(c['level'])} Open for two days or until five have built.\n" \
+               f"{self.cfg.public}/letter/{c['letter']}\n\n{SIGN}"
         whole = f"{head}\n\n{c['text']}\n\n{tail}"
         if len(whole) <= self.cfg.max_post_chars:
             return [whole]
@@ -358,6 +382,108 @@ class Daemon:
         for part in parts[1:]:
             parent = self.writer.post(part, reply={"root": first, "parent": parent})
             self._posted(parent, "letter-part", part, letter=c["letter"])
+
+    # ------------------------------------------------------------------ the tell-me list
+
+    def tell_asked(self, p, where: str) -> tuple[str, str] | None:
+        """"tell me" or "stop telling me" in a reply to the hall or a mention of it."""
+        text = p["record"].get("text", "")
+        if re.search(r"\bstop telling me\b", text, re.I):
+            return self.tell_remove(p["author"]["did"], p["author"]["handle"], where)
+        if re.search(r"\btell me\b", text, re.I):
+            return self.tell_add(p["author"]["did"], p["author"]["handle"], where)
+        return None
+
+    def read_notifications(self):
+        """Mentions of the hall and replies to it outside the open letters' threads: "tell me" and "stop telling me"
+        are answered wherever they are said; everything else there is only logged."""
+        notifications = getattr(self.writer, "notifications", None)
+        if notifications is None:
+            return
+        open_roots = {L["uri"] for L in self.open_letters()}
+        for n in reversed(notifications()):                       # oldest first
+            if n.get("reason") not in ("mention", "reply") or self.one("SELECT 1 FROM seen WHERE uri=?", n["uri"]):
+                continue
+            rec = n.get("record") or {}
+            root = (rec.get("reply") or {}).get("root") or {"uri": n["uri"], "cid": n["cid"]}
+            if root["uri"] in open_roots:
+                continue                                           # read() answers it
+            p = {"uri": n["uri"], "cid": n["cid"], "author": n["author"], "record": rec}
+            asked = None if parse_reply(rec.get("text", "")).shapes else self.tell_asked(p, "outside the letters")
+            outcome = asked[1] if asked else "outside the letters: not answered"
+            self.db.execute("INSERT INTO seen (uri, letter, did, handle, created, text, outcome, read) "
+                            "VALUES (?, NULL, ?, ?, ?, ?, ?, ?)",
+                            (n["uri"], n["author"]["did"], n["author"]["handle"], rec.get("createdAt"),
+                             rec.get("text", ""), outcome, self.clock()))
+            self.log("read", letter=None, uri=n["uri"], handle=n["author"]["handle"], outcome=outcome,
+                     text=rec.get("text", ""))
+            if asked:
+                self.queue(None, root, p, asked[0])
+
+    def tell_add(self, did: str, handle: str, how: str) -> tuple[str, str]:
+        """Someone who only sees posts that mention them asked to be told of letters (tatertot, 24 Nov)."""
+        if self.one("SELECT 1 FROM tell WHERE did=?", did):
+            return ("You're already on the list: each letter the hall posts gets a reply mentioning you. To stop, reply "
+                    "\"stop telling me\"."), "tell me: already listed"
+        self.db.execute("INSERT INTO tell (did, handle, added, how) VALUES (?, ?, ?, ?)", (did, handle, self.clock(), how))
+        self.log("tell: added", handle=handle, how=how)
+        return ("You're on the list: each letter the hall posts gets a reply mentioning you, with its words. To stop, "
+                "reply \"stop telling me\"."), "tell me: added"
+
+    def tell_remove(self, did: str, handle: str, how: str) -> tuple[str, str]:
+        if not self.db.execute("DELETE FROM tell WHERE did=?", (did,)).rowcount:
+            return "You weren't on the list; the hall doesn't mention you.", "stop telling me: not listed"
+        self.log("tell: removed", handle=handle, how=how)
+        return "You're off the list; the hall won't mention you again.", "stop telling me: removed"
+
+    def tell_eligible(self, L, h: dict, t, about: dict) -> bool:
+        """Not for a letter they wrote, built, or have already replied under."""
+        if self.one("SELECT 1 FROM told WHERE letter=? AND did=?", L["letter"], t["did"]) \
+                or self.one("SELECT 1 FROM seen WHERE letter=? AND did=?", L["letter"], t["did"]) \
+                or self.one("SELECT 1 FROM builds WHERE letter=? AND did=?", L["letter"], t["did"]):
+            return False
+        handle = t["handle"].lower()
+        names = {handle, handle.split(".")[0]}
+        row = self.one("SELECT callsign FROM players WHERE did=?", t["did"])
+        if row:
+            names.add(row["callsign"].lower())
+        if h["describer"].lower() in names or any(r["builder"].lower() in names for r in h.get("results", [])):
+            return False
+        if h["describer"] not in about:
+            try:
+                about[h["describer"]] = (self.hall.player(h["describer"]).get("about") or "").lower()
+            except HallError:
+                about[h["describer"]] = ""
+        return handle not in about[h["describer"]]
+
+    def tell_the_list(self):
+        """One reply under each open letter per listed person, mentioning them, with the words and how to build;
+        at most one such mention per person per tick, so someone just added hears of the open letters one by one."""
+        people = self.all("SELECT * FROM tell ORDER BY added")
+        if not people:
+            return
+        told_now, about = set(), {}
+        for L in self.open_letters():
+            h = None
+            for t in people:
+                if t["did"] in told_now:
+                    continue
+                if h is None:
+                    h = self.hall.letter(L["letter"])
+                    if h["status"] != "open":
+                        break
+                if not self.tell_eligible(L, h, t, about):
+                    continue
+                head = (f"@{t['handle']} you asked to be told: a letter to build, level {h['level']}, {h['level_name']}. "
+                        f"{h['describer']} wrote it in the hall:")
+                text = (f"{head}\n\n{h['text']}\n\n{self.how_to(h['level'])} A board sent as a reply to this post "
+                        f"counts. To stop these, reply \"stop telling me\".\n\n{SIGN}")
+                root = {"uri": L["uri"], "cid": L["cid"]}
+                out = self.writer.post(text, reply={"root": root, "parent": root}, mentions={t["handle"]: t["did"]})
+                self.db.execute("INSERT INTO told (letter, did, uri, at) VALUES (?, ?, ?, ?)",
+                                (L["letter"], t["did"], out["uri"], self.clock()))
+                self._posted(out, "tell", text, letter=L["letter"], to_did=t["did"], parent=L["uri"])
+                told_now.add(t["did"])
 
     # ------------------------------------------------------------------ closing
 

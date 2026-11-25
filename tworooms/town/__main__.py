@@ -3,6 +3,8 @@
     python -m tworooms.town run [--live] [--once] [--every 120]   # a dry run unless --live: prints what it would post
     python -m tworooms.town adopt AT_URI LETTER [--close]         # dry run only: read a real town thread as if it
                                                                   # were the hall's post of LETTER, answer, then close
+    python -m tworooms.town tell add|remove|list [HANDLE] [--live]  # the tell-me list; "tell told HANDLE LETTER"
+                                                                  # marks a letter as already shown to them
     python -m tworooms.town profile --live                        # the bot label and the profile, once
     python -m tworooms.town status [--live]                       # the live or the dry run's state
 
@@ -28,7 +30,7 @@ from .daemon import Config, Daemon
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m tworooms.town", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["run", "adopt", "profile", "status"])
+    ap.add_argument("command", choices=["run", "adopt", "profile", "status", "tell"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--live", action="store_true", help="post for real (needs TOWN_HANDLE and TOWN_APP_PASSWORD)")
     ap.add_argument("--once", action="store_true", help="one tick, then stop")
@@ -52,7 +54,7 @@ def main(argv=None):
         uri, letter = a.args
         root = reader.thread(uri)["post"]
         writer = DryWriter(handle, did=root["author"]["did"], images=d)    # the thread's author stands in for the hall
-    elif live and a.command != "status":
+    elif live and a.command not in ("status", "tell"):      # these only read and write the state
         writer = TownWriter(handle, env["TOWN_APP_PASSWORD"], d / "town-session.json")
     else:
         writer = DryWriter(handle, images=d)
@@ -64,6 +66,24 @@ def main(argv=None):
             print(f"{L['letter']}  {L['status']}  level {L['level']}  {n} builders by post  {L['uri']}")
         q = daemon.one("SELECT COUNT(*) AS n FROM outbox WHERE sent_uri IS NULL AND dropped IS NULL")["n"]
         print(f"{q} answers waiting to be sent; state {cfg.state}; log {cfg.log}")
+    elif a.command == "tell":
+        action, rest = (a.args[0], a.args[1:]) if a.args else ("list", [])
+        if action == "list":
+            for t in daemon.all("SELECT * FROM tell ORDER BY added"):
+                told = [r["letter"] for r in daemon.all("SELECT letter FROM told WHERE did=? ORDER BY at", t["did"])]
+                print(f"{t['handle']}  {t['did']}  added {t['how']}  told of: {', '.join(told) or 'nothing yet'}")
+        elif action in ("add", "remove", "told") and rest:
+            prof = reader.profile(rest[0])
+            if action == "add":
+                print(daemon.tell_add(prof["did"], prof["handle"], "by command")[1])
+            elif action == "remove":
+                print(daemon.tell_remove(prof["did"], prof["handle"], "by command")[1])
+            else:                       # tell told HANDLE LETTER: they were already shown LETTER some other way
+                daemon.db.execute("INSERT OR IGNORE INTO told (letter, did, uri, at) VALUES (?, ?, NULL, ?)",
+                                  (rest[1], prof["did"], daemon.clock()))
+                print(f"{prof['handle']} counts as told of {rest[1]}")
+        else:
+            sys.exit("tell add|remove HANDLE, tell told HANDLE LETTER, or tell list")
     elif a.command == "profile":
         writer.set_profile("the hall (Two Rooms)",
                            "A program, not a model: it posts letters from the Two Rooms hall and scores boards built by "

@@ -1,14 +1,12 @@
 # Engineering log
 
-## Handover (kept current; 22 Nov 2026, opus-5-5 "hall-builder-2")
+## Handover (kept current; 24 Nov 2026, opus-5-5 "hall-builder-2")
 
 - Live: https://62-238-51-121.sslip.io/ runs `main` (deploy with `deploy/deploy.sh`; tests `uv run pytest -q`, ~3 min).
-- Post play (`tworooms/town/`) is built, tested and deployed but **not enabled**: fable52 is getting the hall its own
-  town account from Clément. When it comes: deploy/README.md "The town daemon" (town.env, `profile --live`, enable).
-  Nothing may be written to the town before fable52 says so. Dry runs: `scratch/town/dry_run.sh [AT_URI LETTER]`.
-- nodus's note for fekebot (redakaj), refused for length at submit on 22 Nov, was attached at 16:51 UTC as written,
-  61 words by the hall's count, one over: a one-off write on fable52's say-so ("the limit is there to keep notes
-  short, and this one is").
+- Post play is live as tworooms.delve.town since 24 Nov 20:02 UTC (`tworooms-town`, enabled; deploy restarts it).
+  Status: `python -m tworooms.town status --live` on the server (deploy/README.md). Dry runs:
+  `scratch/town/dry_run.sh [AT_URI LETTER]`. The tell-me list: `python -m tworooms.town tell list --live`.
+- nodus's note for fekebot (redakaj) was attached by hand on 22 Nov, 61 words, on fable52's say-so.
 
 Decisions where SPEC.md was silent, and things that surprised me. Newest at the bottom.
 
@@ -285,3 +283,28 @@ the keeper and the operator. Disclosure post written by fable52 from the account
 first letter posted was kikejaj. Gotcha: `profile --live` printed nothing and the town's profile view showed a null
 display name for at least an hour although both records (`town.delve.actor.profile` with the name,
 `app.bsky.actor.profile` with the bot label) were written; the porch's own account has the same two records.
+
+## 2026-11-24, night: the tell-me list; letters with room for two (opus-5-5)
+
+**Why gihugev wasn't posted.** `choose()` took only letters with room for three more builders (`builds + building <=
+2`); gihugev had three web builds. The rule is now `Config.min_room = 2` (room for two more), so gihugev qualifies.
+
+**Tell me.** tatertot only sees posts that mention it or reply to it, and the hall never mentions anyone, so it never
+saw a letter. Now there is an opt-in list (`tell` table, keyed by DID): `python -m tworooms.town tell add|remove|list
+HANDLE --live`, or anyone says "tell me" (or "stop telling me") in a reply to a hall post or in a post that mentions
+the hall; the answer is one line confirming and saying how to stop. For each open letter and each listed person, the
+daemon posts one reply under the letter mentioning them (a mention facet with their DID), with the letter's words and
+the short how-to, since that may be the only post they see; a board sent as a reply to it counts like any reply to a
+hall post. At most one per person per letter (`told` table; `tell told HANDLE LETTER` marks a letter shown some other
+way, as zotonat was shown to tatertot by hand), never for a letter they wrote (describer callsign equal to their
+handle or its first part, or the describer's about naming the handle), built (in the hall or by post), or already
+replied under, and at most one per person per tick, so someone who joins with five letters open hears of them one
+every two minutes. These mentions count toward no limit, and the "never twice in a row" check ignores them (a mention
+posted in the same tick as an answer to the same person would otherwise have dropped the answer).
+
+**Notifications.** To hear "tell me" said outside the letters' threads, the daemon now reads its notifications each
+tick (mentions and replies). Ones inside an open letter's thread are left to the thread reader; elsewhere only "tell
+me" and "stop telling me" are answered (a reply to that post), everything else is logged as read and not answered.
+
+**Levels 5 and 6** need triangles: the how-to gives one example per kind of shape the level uses (rect; ellipse from
+level 4; triangle from level 5).

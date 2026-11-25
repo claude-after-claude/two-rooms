@@ -38,11 +38,13 @@ class FakeTown:
         return self.posts[uri]
 
     # writer
-    def post(self, text, reply=None, image=None, alt=None):
+    def post(self, text, reply=None, image=None, alt=None, mentions=None):
         if self.fail_next:
             self.fail_next -= 1
             raise TownError("createRecord: HTTP 500")
-        p = self._new(HALL_DID, "hall.delve.town", text, reply, embed={"image": image, "alt": alt} if image else None)
+        from tworooms.town.clients import mention_facets
+        p = self._new(HALL_DID, "hall.delve.town", text, reply, facets=mention_facets(text, mentions or {}) or None,
+                      embed={"image": image, "alt": alt} if image else None)
         self.sent.append(p)
         return {"uri": p["uri"], "cid": p["cid"]}
 
@@ -53,11 +55,26 @@ class FakeTown:
             return {"post": self.posts[u], "replies": [node(k) for k in kids]}
         return node(uri)
 
+    def notifications(self, limit=50):
+        """Replies to the hall's posts and mentions of it, newest first."""
+        out = []
+        for u in reversed(self.order):
+            p = self.posts[u]
+            if p["author"]["did"] == HALL_DID:
+                continue
+            parent = (p["record"].get("reply") or {}).get("parent", {}).get("uri", "")
+            mention = any(f["did"] == HALL_DID for x in p["record"].get("facets") or [] for f in x["features"])
+            if mention or parent.startswith(f"at://{HALL_DID}/"):
+                out.append({**p, "reason": "mention" if mention else "reply"})
+        return out[:limit]
+
     # other residents
-    def say(self, handle, text, parent, mention_hall=False):
-        root = (parent["record"].get("reply") or {}).get("root") or {"uri": parent["uri"], "cid": parent["cid"]}
+    def say(self, handle, text, parent=None, mention_hall=False):
         facets = [{"index": {"byteStart": 0, "byteEnd": 1},
                    "features": [{"$type": "town.delve.richtext.facet#mention", "did": HALL_DID}]}] if mention_hall else None
+        if parent is None:                       # a post of their own, outside any thread
+            return self._new(f"did:plc:{handle.split('.')[0]}", handle, text, None, facets)
+        root = (parent["record"].get("reply") or {}).get("root") or {"uri": parent["uri"], "cid": parent["cid"]}
         return self._new(f"did:plc:{handle.split('.')[0]}", handle, text,
                          {"root": root, "parent": {"uri": parent["uri"], "cid": parent["cid"]}}, facets)
 
@@ -342,3 +359,128 @@ def test_long_words_go_on_as_replies(world):
     said_words = " ".join(p["record"]["text"] for p in town.sent[:-1]).split("in 40 words.", 1)[1]
     assert said_words.replace("…", " ").split() == words.split()
     assert rest[-1]["record"]["text"].endswith(SIGN) and f"/letter/{lid}" in rest[-1]["record"]["text"]
+
+
+# ---------------------------------------------------------------- the tell-me list
+
+def tells(town, letter_post):
+    """The hall's mentions under a letter post: {handle mentioned: post}."""
+    out = {}
+    for p in town.replies_to(letter_post):
+        for f in p["record"].get("facets") or []:
+            for feat in f["features"]:
+                if feat["$type"].endswith("#mention"):
+                    out[feat["did"]] = p
+    return out
+
+
+def test_tell_me_list(world):
+    base, app, town, d, clock = world
+    d.cfg.max_open = 5
+    alice, bob = Client.new(base, "alice"), Client.new(base, "bob")
+    lid = letter(base, alice)
+    d.tell_add("did:plc:tater", "tater.delve.town", "by command")
+    d.tick()
+    post = town.sent[0]
+    m = tells(town, post)
+    assert list(m) == ["did:plc:tater"]
+    t = m["did:plc:tater"]["record"]
+    assert t["text"].startswith("@tater.delve.town you asked to be told: a letter to build, level 1, two blocks.")
+    assert "Two blocks: a red one low" in t["text"] and "rect red 2 1 3 2" in t["text"] and "stop telling me" in t["text"]
+    assert t["facets"][0]["index"] == {"byteStart": 0, "byteEnd": len("@tater.delve.town")}
+    d.tick()
+    assert len(tells(town, post)) == 1 and len(town.replies_to(post)) == 1, "one mention per person per letter"
+
+    board_reply = town.say("tater.delve.town", board(truth(app, lid)), m["did:plc:tater"])
+    ask = town.say("meitan.delve.town", "tell me when there are more, please", post)
+    d.tick()
+    assert town.replies_to(board_reply)[0]["record"]["text"].startswith("Check 1 of 2"), "a board under the mention counts"
+    assert town.replies_to(ask)[0]["record"]["text"].startswith("You're on the list")
+
+    lid2 = letter(base, bob, level=2)
+    d.tick()
+    post2 = [p for p in town.sent if f"/letter/{lid2}" in p["record"]["text"] and "reply" not in p["record"]][0]
+    assert set(tells(town, post2)) == {"did:plc:tater", "did:plc:meitan"}
+    stop = town.say("meitan.delve.town", "stop telling me", tells(town, post2)["did:plc:meitan"])
+    d.tick()
+    assert town.replies_to(stop)[0]["record"]["text"].startswith("You're off the list")
+    lid3 = letter(base, bob, level=3)
+    d.tick()
+    post3 = [p for p in town.sent if f"/letter/{lid3}" in p["record"]["text"] and "reply" not in p["record"]][0]
+    assert set(tells(town, post3)) == {"did:plc:tater"}
+
+
+def test_tell_me_skips_writers_builders_and_the_told(world):
+    base, app, town, d, clock = world
+    d.cfg.max_open = 5
+    alice, bob = Client.new(base, "alice"), Client.new(base, "bob")
+    lid = letter(base, alice)
+    bid = bob.post(f"/api/letters/{lid}/builds")["build"]
+    bob.put(f"/api/builds/{bid}/shapes", truth(app, lid))
+    bob.post(f"/api/builds/{bid}/submit")
+    for name in ("alice", "bob", "carol", "dana"):
+        d.tell_add(f"did:plc:{name}", f"{name}.delve.town", "by command")
+    d.db.execute("INSERT INTO told (letter, did, at) VALUES (?, 'did:plc:dana', 0)", (lid,))   # shown by hand
+    d.tick()
+    assert set(tells(town, town.sent[0])) == {"did:plc:carol"}
+
+
+def test_tell_me_newcomer_hears_one_letter_a_tick(world):
+    base, app, town, d, clock = world
+    alice = Client.new(base, "alice")
+    letter(base, alice, 1)
+    letter(base, alice, 2)
+    d.tick()
+    d.tick()
+    posts = [p for p in town.sent if "reply" not in p["record"]]
+    assert len(posts) == 2
+    d.tell_add("did:plc:tater", "tater.delve.town", "by command")
+    d.tick()
+    assert sum(len(tells(town, p)) for p in posts) == 1
+    d.tick()
+    assert sum(len(tells(town, p)) for p in posts) == 2
+
+
+def test_tell_me_said_anywhere_to_the_hall(world):
+    base, app, town, d, clock = world
+    elsewhere = town.say("tater.delve.town", "@hall.delve.town tell me when a letter is up", mention_hall=True)
+    other = town.say("kit.delve.town", "@hall.delve.town hello", mention_hall=True)
+    d.tick()
+    ans = town.replies_to(elsewhere)
+    assert len(ans) == 1 and ans[0]["record"]["text"].startswith("You're on the list")
+    assert ans[0]["record"]["reply"]["root"]["uri"] == elsewhere["uri"]
+    assert town.replies_to(other) == [], "outside the letters, only tell me and stop telling me are answered"
+    assert d.one("SELECT handle FROM tell")["handle"] == "tater.delve.town"
+    d.tick()
+    assert len(town.replies_to(elsewhere)) == 1
+
+
+def test_a_mention_does_not_hold_back_an_answer(world):
+    base, app, town, d, clock = world
+    d.cfg.max_open = 5
+    alice = Client.new(base, "alice")
+    lid = letter(base, alice)
+    d.tick()
+    d.tell_add("did:plc:tater", "tater.delve.town", "by command")
+    reply = town.say("tater.delve.town", board(truth(app, lid)), town.sent[0])
+    letter(base, alice, 2)
+    d.tick()                       # reads tater's board, posts the new letter and its mention, then sends the answer
+    assert town.replies_to(reply)[0]["record"]["text"].startswith("Check 1 of 2")
+
+
+def test_room_for_two_is_enough(world):
+    base, app, town, d, clock = world
+    alice = Client.new(base, "alice")
+    full = {}
+    for n, level in ((3, 1), (4, 2)):
+        lid = letter(base, alice, level)
+        for i in range(n):
+            p = Client.new(base, f"b{level}{i}")
+            bid = p.post(f"/api/letters/{lid}/builds")["build"]
+            p.put(f"/api/builds/{bid}/shapes", truth(app, lid))
+            p.post(f"/api/builds/{bid}/submit")
+        full[n] = lid
+    d.tick()
+    d.tick()
+    texts = " ".join(p["record"]["text"] for p in town.sent)
+    assert f"/letter/{full[3]}" in texts and f"/letter/{full[4]}" not in texts
