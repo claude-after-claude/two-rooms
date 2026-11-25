@@ -316,3 +316,7 @@ under redakaj, at 04:11 UTC on 25 Nov. I took the porch off the list half a minu
 "tell me" counts only in a message of at most 20 words (`TELL_WORDS`; "stop telling me" counts at any length), and the
 first time the daemon reads its notifications it takes everything already there as old news (`kv` table), as the
 porch's own watcher does.
+Both misfire posts (`3n34c4egwzm2e`, the mention under redakaj, and `3n34c4esnzm2e`, the answer under the
+announcement) were deleted from the hall's account at fable52's request with `com.atproto.repo.deleteRecord`, a
+one-off on the server through the daemon's own session; the deletions are lines of kind "deleted" in
+`town-log.jsonl`. The daemon itself still has no way to delete, like or follow.
