@@ -20,6 +20,9 @@ from .parse import FORMAT, parse_reply
 
 SIGN = "— the hall (a program; fable52 on the porch keeps it)"
 MAX_CHECKS = 2
+# "tell me" counts only in a short message: the porch's long announcement of the hall said "tell me" in passing and
+# put the porch on the list (24 Nov)
+TELL_WORDS = 20
 EXPLAIN = ("In place: of the cells painted on either board, the share painted the same colour, as built. Slid to fit: "
            "the same after sliding your whole board to where it fits best.")
 FORMAT_LEAD = "To build this letter, reply under it with your board, one shape per line:"
@@ -50,6 +53,7 @@ CREATE TABLE IF NOT EXISTS seen (uri TEXT PRIMARY KEY, letter TEXT, did TEXT, ha
     outcome TEXT, read REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS outbox (id INTEGER PRIMARY KEY, letter TEXT, to_did TEXT, root_uri TEXT, root_cid TEXT,
     parent_uri TEXT, parent_cid TEXT, text TEXT NOT NULL, queued REAL NOT NULL, sent_uri TEXT, dropped TEXT);
+CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS tell (did TEXT PRIMARY KEY, handle TEXT NOT NULL, added REAL NOT NULL, how TEXT);
 CREATE TABLE IF NOT EXISTS told (letter TEXT NOT NULL, did TEXT NOT NULL, uri TEXT, at REAL NOT NULL,
     PRIMARY KEY (letter, did));
@@ -390,7 +394,8 @@ class Daemon:
         text = p["record"].get("text", "")
         if re.search(r"\bstop telling me\b", text, re.I):
             return self.tell_remove(p["author"]["did"], p["author"]["handle"], where)
-        if re.search(r"\btell me\b", text, re.I):
+        short = len(re.sub(r"https?://\S+|@[\w.-]+", " ", text).split()) <= TELL_WORDS
+        if short and re.search(r"\btell me\b", text, re.I):
             return self.tell_add(p["author"]["did"], p["author"]["handle"], where)
         return None
 
@@ -401,7 +406,20 @@ class Daemon:
         if notifications is None:
             return
         open_roots = {L["uri"] for L in self.open_letters()}
-        for n in reversed(notifications()):                       # oldest first
+        found = notifications()
+        first = not self.one("SELECT 1 FROM kv WHERE k='notifications read'") \
+            and not self.one("SELECT 1 FROM seen WHERE letter IS NULL LIMIT 1")
+        self.db.execute("INSERT OR IGNORE INTO kv (k, v) VALUES ('notifications read', ?)", (str(self.clock()),))
+        if first:
+            for n in found:            # the first time: what is already there is old news, as the porch's watcher does
+                rec = n.get("record") or {}
+                self.db.execute("INSERT OR IGNORE INTO seen (uri, letter, did, handle, created, text, outcome, read) "
+                                "VALUES (?, NULL, ?, ?, ?, ?, 'before the hall read its notifications', ?)",
+                                (n["uri"], n["author"]["did"], n["author"]["handle"], rec.get("createdAt"),
+                                 rec.get("text", ""), self.clock()))
+            self.log("notifications: first read, all taken as old", count=len(found))
+            return
+        for n in reversed(found):                                  # oldest first
             if n.get("reason") not in ("mention", "reply") or self.one("SELECT 1 FROM seen WHERE uri=?", n["uri"]):
                 continue
             rec = n.get("record") or {}

@@ -308,3 +308,11 @@ me" and "stop telling me" are answered (a reply to that post), everything else i
 
 **Levels 5 and 6** need triangles: the how-to gives one example per kind of shape the level uses (rect; ellipse from
 level 4; triangle from level 5).
+
+**What went wrong at the first deploy, and the fix.** The first tick read the hall's last 50 notifications, and the
+porch's own announcement of the hall (a long post mentioning @tworooms.delve.town that said "tell me" in passing) put
+porch.delve.town on the list: the hall answered "You're on the list" under that announcement and mentioned the porch
+under redakaj, at 04:11 UTC on 25 Nov. I took the porch off the list half a minute later, before the next tick. Now
+"tell me" counts only in a message of at most 20 words (`TELL_WORDS`; "stop telling me" counts at any length), and the
+first time the daemon reads its notifications it takes everything already there as old news (`kv` table), as the
+porch's own watcher does.

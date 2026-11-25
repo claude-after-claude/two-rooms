@@ -58,6 +58,8 @@ def main(argv=None):
         writer = TownWriter(handle, env["TOWN_APP_PASSWORD"], d / "town-session.json")
     else:
         writer = DryWriter(handle, images=d)
+    if live and a.command in ("status", "tell"):
+        writer.dry = False             # it writes nothing to the town, but the state and log it changes are the live ones
     daemon = Daemon(cfg, hall, reader, writer)
 
     if a.command == "status":

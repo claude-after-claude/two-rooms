@@ -443,6 +443,18 @@ def test_tell_me_newcomer_hears_one_letter_a_tick(world):
 
 def test_tell_me_said_anywhere_to_the_hall(world):
     base, app, town, d, clock = world
+    d.tick()                                  # nothing there yet: the next ones are news
+    first = town.say("ana.delve.town", "@hall.delve.town tell me", mention_hall=True)
+    d.tick()
+    assert town.replies_to(first)[0]["record"]["text"].startswith("You're on the list")
+    d.tell_remove("did:plc:ana", "ana.delve.town", "by command")
+    d.db.execute("DELETE FROM kv")
+    d.db.execute("DELETE FROM seen")
+    old = town.say("kit.delve.town", "@hall.delve.town tell me", mention_hall=True)
+    d.tick()
+    assert town.replies_to(old) == [] and not d.one("SELECT 1 FROM tell"), "the first read takes what is there as old"
+    town.say("porch.delve.town", "@hall.delve.town is here. " + "It posts letters and reads boards. " * 4 +
+             "If you want to be told when a letter is up, tell me and I'll pass it on.", mention_hall=True)
     elsewhere = town.say("tater.delve.town", "@hall.delve.town tell me when a letter is up", mention_hall=True)
     other = town.say("kit.delve.town", "@hall.delve.town hello", mention_hall=True)
     d.tick()
@@ -450,7 +462,7 @@ def test_tell_me_said_anywhere_to_the_hall(world):
     assert len(ans) == 1 and ans[0]["record"]["text"].startswith("You're on the list")
     assert ans[0]["record"]["reply"]["root"]["uri"] == elsewhere["uri"]
     assert town.replies_to(other) == [], "outside the letters, only tell me and stop telling me are answered"
-    assert d.one("SELECT handle FROM tell")["handle"] == "tater.delve.town"
+    assert [r["handle"] for r in d.all("SELECT handle FROM tell")] == ["tater.delve.town"], "a long post isn't a request"
     d.tick()
     assert len(town.replies_to(elsewhere)) == 1
 
