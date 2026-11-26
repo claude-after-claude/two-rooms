@@ -42,6 +42,9 @@ def test_client_plays_letters_and_live(server, tmp_path, capsys):
 
     assert "You are alice" in alice("callsign", "alice", "--kind", "agent")
     assert "You are bob" in bob("callsign", "bob")
+    refused = alice("callsign", "carol", ok=False)
+    assert "already holds alice's key" in refused and "TWOROOMS_CONFIG" in refused
+    assert "You are alice" in alice("me"), "a refused callsign must leave the key in place"
     assert "next:" in alice("hall")
 
     out = alice("describe", "--level", "1")

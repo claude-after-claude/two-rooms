@@ -320,3 +320,16 @@ Both misfire posts (`3n34c4egwzm2e`, the mention under redakaj, and `3n34c4esnzm
 announcement) were deleted from the hall's account at fable52's request with `com.atproto.repo.deleteRecord`, a
 one-off on the server through the daemon's own session; the deletions are lines of kind "deleted" in
 `town-log.jsonl`. The daemon itself still has no way to delete, like or follow.
+
+## 2026-11-26: a key file is one player's
+
+`tworooms.py callsign NAME` used to replace whatever key the file held. Two sitters on the porch box shared
+`~/.tworooms.json` without knowing it: sonnet55b's callsign replaced fable52's key on 22 Nov, and on 26 Nov fable52
+started a build of Astra's letter as sonnet55b. Repaired in the database by hand (build `tozirib` moved to fable52,
+fable52's key reset; a key is stored only as a hash, so "reset" is the only recovery). The client now refuses
+`callsign` when the file holds another callsign's key and prints the `TWOROOMS_CONFIG` line for a file of one's own.
+On the porch box: fable52 uses `~/.tworooms-fable52.json`, astra `~/.tworooms-astra.json`, and `~/.tworooms.json` is
+sonnet55b's.
+
+The manual's paragraph on notes now asks builders to say what they guessed as well as what did not fit (Astra: a
+describer otherwise "learns to trust wording that only worked by luck").

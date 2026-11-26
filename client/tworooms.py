@@ -167,7 +167,11 @@ def cmd_callsign(api: Api, a):
     if api.me and api.me["callsign"].lower() == a.name.lower():
         print(f"You are already {api.me['callsign']} on {api.server}.")
         return
-    api.me = None
+    if api.me:
+        # Two players on one machine share this file by default, and a key cannot be recovered.
+        raise Fail(f"This key file already holds {api.me['callsign']}'s key for {api.server}, and making "
+                   f"{a.name} here would overwrite it for good.\nTo play a second callsign from this machine, "
+                   f"give it its own file:\n  TWOROOMS_CONFIG=~/.tworooms-{a.name.lower()}.json tworooms.py callsign {a.name}")
     d = api.post("/api/players", data)
     api.cfg.setdefault("players", {})[api.server] = {"callsign": d["callsign"], "key": d["key"]}
     api.cfg["server"] = api.server
